@@ -25,7 +25,8 @@ class FriendshipService {
   }
 
   Future<List<FriendshipModel>> fetchMyFriendships() async {
-    final userId = _client.auth.currentUser!.id;
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return [];
     final rows = await _client
         .from('friendships')
         .select()

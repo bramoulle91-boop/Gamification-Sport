@@ -29,11 +29,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     initialLocation: '/home',
+    // Pas de connexion requise pour visiter l'app : les écrans affichent des
+    // données de démonstration tant qu'il n'y a pas de session (voir
+    // currentProfileProvider). On évite juste de montrer /login ou /signup
+    // à quelqu'un déjà connecté.
     redirect: (context, state) {
       final loggedIn = authState != null;
       final loggingInRoute =
           state.matchedLocation == '/login' || state.matchedLocation == '/signup';
-      if (!loggedIn && !loggingInRoute) return '/login';
       if (loggedIn && loggingInRoute) return '/home';
       return null;
     },

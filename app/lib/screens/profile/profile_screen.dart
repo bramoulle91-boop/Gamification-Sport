@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../services/providers.dart';
+import '../../widgets/demo_mode_banner.dart';
 import '../../widgets/league_badge.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -11,6 +12,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
+    final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profil')),
@@ -18,10 +20,13 @@ class ProfileScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Erreur : $err')),
         data: (profile) {
-          if (profile == null) return const SizedBox.shrink();
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (!isLoggedIn) ...[
+                const DemoModeBanner(),
+                const SizedBox(height: 16),
+              ],
               CircleAvatar(radius: 40, child: Text(profile.pseudo.substring(0, 1).toUpperCase())),
               const SizedBox(height: 12),
               Center(child: Text(profile.pseudo, style: Theme.of(context).textTheme.titleLarge)),
@@ -42,14 +47,22 @@ class ProfileScreen extends ConsumerWidget {
                 onTap: () => context.push('/validation/jury'),
               ),
               const Divider(height: 32),
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('Se déconnecter'),
-                onTap: () async {
-                  await ref.read(authServiceProvider).signOut();
-                  if (context.mounted) context.go('/login');
-                },
-              ),
+              if (isLoggedIn)
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Se déconnecter'),
+                  onTap: () async {
+                    await ref.read(authServiceProvider).signOut();
+                    if (context.mounted) context.go('/login');
+                  },
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.login),
+                  title: const Text('Se connecter'),
+                  subtitle: const Text('Pour sauvegarder tes vraies données'),
+                  onTap: () => context.push('/login'),
+                ),
             ],
           );
         },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/providers.dart';
+import '../../widgets/demo_mode_banner.dart';
 import '../../widgets/league_badge.dart';
 import '../../widgets/stat_tile.dart';
 
@@ -11,6 +12,7 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(currentProfileProvider);
+    final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('GymQuest')),
@@ -18,13 +20,16 @@ class HomeScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Erreur : $err')),
         data: (profile) {
-          if (profile == null) return const SizedBox.shrink();
           final streakCount = profile.streakHistory.length;
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(currentProfileProvider),
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (!isLoggedIn) ...[
+                  const DemoModeBanner(),
+                  const SizedBox(height: 16),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [

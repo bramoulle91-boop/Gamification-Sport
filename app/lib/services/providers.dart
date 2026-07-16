@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/demo_data.dart';
 import '../models/user_model.dart';
 import 'auth_service.dart';
 import 'friendship_service.dart';
@@ -26,8 +27,10 @@ final currentUserIdProvider = Provider<String?>((ref) {
   return SupabaseService.client.auth.currentUser?.id;
 });
 
-final currentProfileProvider = FutureProvider<UserModel?>((ref) async {
+/// Profil de l'utilisateur connecté. Retombe sur un profil de démonstration
+/// quand personne n'est connecté, pour que l'app reste visitable sans compte.
+final currentProfileProvider = FutureProvider<UserModel>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
-  if (userId == null) return null;
+  if (userId == null) return demoProfile;
   return ref.watch(authServiceProvider).fetchProfile(userId);
 });

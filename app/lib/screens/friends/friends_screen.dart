@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/friendship_model.dart';
 import '../../services/providers.dart';
+import '../../widgets/demo_mode_banner.dart';
 
 final _friendshipsProvider = FutureProvider<List<FriendshipModel>>((ref) {
   return ref.watch(friendshipServiceProvider).fetchMyFriendships();
@@ -32,9 +33,23 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
                   title: Text(user.pseudo),
                   trailing: FilledButton(
                     onPressed: () async {
-                      await ref.read(friendshipServiceProvider).sendRequest(user.id);
-                      if (context.mounted) Navigator.of(context).pop();
-                      ref.invalidate(_friendshipsProvider);
+                      if (ref.read(currentUserIdProvider) == null) {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Connecte-toi pour ajouter des amis.')),
+                        );
+                        return;
+                      }
+                      try {
+                        await ref.read(friendshipServiceProvider).sendRequest(user.id);
+                        if (context.mounted) Navigator.of(context).pop();
+                        ref.invalidate(_friendshipsProvider);
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text('Erreur : $e')));
+                        }
+                      }
                     },
                     child: const Text('Ajouter'),
                   ),
@@ -48,6 +63,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
   Widget build(BuildContext context) {
     final friendshipsAsync = ref.watch(_friendshipsProvider);
     final myId = ref.watch(currentUserIdProvider);
+    final isLoggedIn = myId != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -62,6 +78,11 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
       ),
       body: Column(
         children: [
+          if (!isLoggedIn)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: DemoModeBanner(),
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
