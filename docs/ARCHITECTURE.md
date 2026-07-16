@@ -36,7 +36,9 @@ Architecture cible : FlutterFlow (front mobile no-code) + Supabase (backend/BDD 
 | `Friendships` | User_ID_1, User_ID_2, Status (PENDING / DEBLOCKED), Date de connexion |
 | `Performances` | ID, User_ID, Machine_ID, Poids (kg), Reps, Timestamp, Niveau de validation (1, 2, 3), Statut de validation |
 
-Voir le script SQL de référence : [`supabase/schema.sql`](../supabase/schema.sql).
+Voir les migrations SQL de référence : [`supabase/migrations/`](../supabase/migrations), qui étendent ce modèle avec les tables nécessaires aux niveaux 2 et 3 (`gym_staff`, `qr_validation_tokens`, `peer_jury_votes`, `rewards`) et les fonctions RPC de validation.
+
+L'implémentation de référence de l'application mobile se trouve dans [`app/`](../app) (Flutter + Supabase).
 
 ## VII. Plan de déploiement & validation terrain
 
