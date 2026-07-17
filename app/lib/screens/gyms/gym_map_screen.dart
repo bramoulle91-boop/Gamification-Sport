@@ -219,7 +219,16 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                 _userPosition!.latitude, _userPosition!.longitude, b.latitude, b.longitude))));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Salles partenaires')),
+      appBar: AppBar(
+        title: const Text('Salles partenaires'),
+        actions: [
+          IconButton(
+            tooltip: 'Aperçu design Sport Chic',
+            icon: const Icon(Icons.auto_awesome),
+            onPressed: () => context.push('/gyms/map-sport-chic'),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           gymsAsync.when(
