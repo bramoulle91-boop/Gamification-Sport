@@ -5,12 +5,12 @@ import '../../models/machine_king_model.dart';
 import '../../models/user_model.dart';
 import '../../services/providers.dart';
 
-final _topUsersProvider = FutureProvider<List<UserModel>>((ref) {
-  return ref.watch(leaderboardServiceProvider).fetchTopUsers();
+final _topUsersProvider = FutureProvider.family<List<UserModel>, String?>((ref, gymId) {
+  return ref.watch(leaderboardServiceProvider).fetchTopUsers(gymId: gymId);
 });
 
-final _machineKingsProvider = FutureProvider<List<MachineKingModel>>((ref) {
-  return ref.watch(machineKingServiceProvider).fetchMachineKings();
+final _machineKingsProvider = FutureProvider.family<List<MachineKingModel>, String?>((ref, gymId) {
+  return ref.watch(machineKingServiceProvider).fetchMachineKings(gymId: gymId);
 });
 
 const _medals = ['🥇', '🥈', '🥉'];
@@ -24,9 +24,14 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
 
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
   int _segment = 0;
+  bool _myGymOnly = false;
 
   @override
   Widget build(BuildContext context) {
+    final myGymAsync = ref.watch(myGymProvider);
+    final myGym = myGymAsync.valueOrNull;
+    final filterGymId = _myGymOnly ? myGym?.id : null;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Classement')),
       body: Column(
@@ -42,7 +47,31 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
               onSelectionChanged: (s) => setState(() => _segment = s.first),
             ),
           ),
-          Expanded(child: _segment == 0 ? const _AthletesTab() : const _MachinesTab()),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('Toutes les salles'),
+                  selected: !_myGymOnly,
+                  onSelected: (_) => setState(() => _myGymOnly = false),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: Text(myGym != null ? 'Ma salle (${myGym.name})' : 'Ma salle'),
+                  selected: _myGymOnly,
+                  onSelected: myGym == null
+                      ? null
+                      : (_) => setState(() => _myGymOnly = true),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _segment == 0
+                ? _AthletesTab(gymId: filterGymId)
+                : _MachinesTab(gymId: filterGymId),
+          ),
         ],
       ),
     );
@@ -50,26 +79,30 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen> {
 }
 
 class _AthletesTab extends ConsumerWidget {
-  const _AthletesTab();
+  const _AthletesTab({required this.gymId});
+
+  final String? gymId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final usersAsync = ref.watch(_topUsersProvider);
+    final usersAsync = ref.watch(_topUsersProvider(gymId));
     final myId = ref.watch(currentUserIdProvider);
 
     return usersAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(child: Text('Erreur : $err')),
       data: (users) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(_topUsersProvider),
+        onRefresh: () async => ref.invalidate(_topUsersProvider(gymId)),
         child: users.isEmpty
             ? ListView(
-                children: const [
+                children: [
                   Padding(
-                    padding: EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(32),
                     child: Center(
                       child: Text(
-                        "Personne au classement pour l'instant — sois le premier à valider une performance 🏆",
+                        gymId != null
+                            ? "Personne de cette salle au classement pour l'instant."
+                            : "Personne au classement pour l'instant — sois le premier à valider une performance 🏆",
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -103,18 +136,20 @@ class _AthletesTab extends ConsumerWidget {
 }
 
 class _MachinesTab extends ConsumerWidget {
-  const _MachinesTab();
+  const _MachinesTab({required this.gymId});
+
+  final String? gymId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final kingsAsync = ref.watch(_machineKingsProvider);
+    final kingsAsync = ref.watch(_machineKingsProvider(gymId));
     final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
     return kingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(child: Text('Erreur : $err')),
       data: (machines) => RefreshIndicator(
-        onRefresh: () async => ref.invalidate(_machineKingsProvider),
+        onRefresh: () async => ref.invalidate(_machineKingsProvider(gymId)),
         child: machines.isEmpty
             ? ListView(
                 children: const [

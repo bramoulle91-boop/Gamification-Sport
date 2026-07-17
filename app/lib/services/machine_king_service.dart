@@ -9,8 +9,12 @@ class MachineKingService {
   /// Une ligne par machine : le détenteur actuel du record (le "King"), et le
   /// record personnel de l'utilisateur courant s'il en a un — pour que
   /// chacun voie sa propre progression, pas seulement l'écart avec le King.
-  Future<List<MachineKingModel>> fetchMachineKings() async {
-    final machinesRows = await _client.from('machines').select();
+  Future<List<MachineKingModel>> fetchMachineKings({String? gymId}) async {
+    var machinesQuery = _client.from('machines').select();
+    if (gymId != null) {
+      machinesQuery = machinesQuery.eq('gym_id', gymId);
+    }
+    final machinesRows = await machinesQuery;
     final kingsRows = await _client.from('machine_kings').select();
     final kingsByMachine = {
       for (final row in kingsRows as List<dynamic>)

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/friends/friends_screen.dart';
+import '../screens/gyms/gym_detail_screen.dart';
 import '../screens/gyms/gym_map_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/home/main_shell.dart';
@@ -58,6 +59,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/scan', builder: (context, state) => const MachineScanScreen()),
       GoRoute(path: '/programs/create', builder: (context, state) => const CreateProgramScreen()),
       GoRoute(path: '/gyms/map', builder: (context, state) => const GymMapScreen()),
+      GoRoute(
+        path: '/gyms/:gymId',
+        builder: (context, state) => GymDetailScreen(gymId: state.pathParameters['gymId']!),
+      ),
       GoRoute(
         path: '/log-performance/:machineId',
         builder: (context, state) => LogPerformanceScreen(
