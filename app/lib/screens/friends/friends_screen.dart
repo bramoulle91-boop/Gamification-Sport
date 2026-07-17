@@ -112,13 +112,18 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
                       itemCount: friendships.length,
                       itemBuilder: (context, index) {
                         final friendship = friendships[index];
-                        final friendId =
-                            friendship.userId1 == myId ? friendship.userId2 : friendship.userId1;
                         final pending = friendship.status == FriendshipStatus.pending;
+                        final pseudo = friendship.pseudoForOther(myId ?? '');
+                        final points = friendship.pointsForOther(myId ?? '');
+                        final streak = friendship.streakForOther(myId ?? '');
                         return ListTile(
-                          leading: const CircleAvatar(child: Icon(Icons.person)),
-                          title: Text(friendId),
-                          subtitle: Text(pending ? 'En attente' : 'Connecté'),
+                          leading: CircleAvatar(child: Text(pseudo.isNotEmpty ? pseudo[0].toUpperCase() : '?')),
+                          title: Text(pseudo),
+                          subtitle: Text(
+                            pending
+                                ? 'En attente'
+                                : '🔥 $streak jours · $points pts',
+                          ),
                           trailing: pending && friendship.userId2 == myId
                               ? TextButton(
                                   onPressed: () async {

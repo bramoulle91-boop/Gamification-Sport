@@ -55,6 +55,18 @@ class _LogPerformanceScreenState extends ConsumerState<LogPerformanceScreen> {
             reps: reps,
           );
           if (mounted) {
+            if (performance.validationStatus == ValidationStatus.rejected) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    '❌ Performance rejetée : tu sembles hors de la salle, ou tu as validé trop '
+                    'vite après ta dernière performance.',
+                  ),
+                  duration: Duration(seconds: 5),
+                ),
+              );
+              return;
+            }
             final isNewRecord = performance.validationStatus == ValidationStatus.validated &&
                 (previousBest == null || weight > previousBest);
             ScaffoldMessenger.of(context).showSnackBar(

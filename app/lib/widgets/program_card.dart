@@ -107,11 +107,18 @@ class ProgramCard extends StatelessWidget {
   }
 }
 
-/// Carte proposée quand l'utilisateur ne suit encore aucun programme.
+/// Carte proposée quand l'utilisateur ne suit encore aucun programme :
+/// suivre le programme prédéfini, ou créer le sien sur-mesure.
 class NoProgramCard extends StatelessWidget {
-  const NoProgramCard({required this.onStart, this.loading = false, super.key});
+  const NoProgramCard({
+    required this.onStartDiscovery,
+    required this.onCreateOwn,
+    this.loading = false,
+    super.key,
+  });
 
-  final VoidCallback onStart;
+  final VoidCallback onStartDiscovery;
+  final VoidCallback onCreateOwn;
   final bool loading;
 
   @override
@@ -131,14 +138,27 @@ class NoProgramCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Suis le Programme Découverte (full-body en 3 séances) pour savoir quoi faire à chaque passage à la salle.',
+              'Suis le Programme Découverte (full-body en 3 séances), ou crée ton propre programme avec tes exercices.',
             ),
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: loading ? null : onStart,
-              child: loading
-                  ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Commencer le programme'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: loading ? null : onCreateOwn,
+                    child: const Text('Créer le mien'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: loading ? null : onStartDiscovery,
+                    child: loading
+                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Découverte'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

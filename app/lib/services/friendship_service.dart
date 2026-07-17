@@ -32,7 +32,10 @@ class FriendshipService {
     if (userId == null) return [];
     final rows = await _client
         .from('friendships')
-        .select()
+        .select(
+          '*, user_1:user_id_1(pseudo,total_points,streak_history), '
+          'user_2:user_id_2(pseudo,total_points,streak_history)',
+        )
         .or('user_id_1.eq.$userId,user_id_2.eq.$userId');
     return (rows as List<dynamic>)
         .map((e) => FriendshipModel.fromMap(e as Map<String, dynamic>))

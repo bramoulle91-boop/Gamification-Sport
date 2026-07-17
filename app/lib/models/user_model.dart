@@ -7,6 +7,7 @@ class UserModel {
     this.leagueLevel = 1,
     this.totalPoints = 0,
     this.streakHistory = const [],
+    this.homeGymId,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -20,6 +21,7 @@ class UserModel {
       streakHistory: (map['streak_history'] as List<dynamic>? ?? const [])
           .map((e) => e as Map<String, dynamic>)
           .toList(),
+      homeGymId: map['home_gym_id'] as String?,
     );
   }
 
@@ -30,6 +32,7 @@ class UserModel {
   final int leagueLevel;
   final int totalPoints;
   final List<Map<String, dynamic>> streakHistory;
+  final String? homeGymId;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -39,5 +42,6 @@ class UserModel {
         'league_level': leagueLevel,
         'total_points': totalPoints,
         'streak_history': streakHistory,
+        'home_gym_id': homeGymId,
       };
 }

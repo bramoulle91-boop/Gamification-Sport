@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
@@ -47,7 +48,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('GymQuest')),
+      appBar: AppBar(
+        title: const Text('GymQuest'),
+        actions: [
+          IconButton(
+            icon: const Text('🗺️', style: TextStyle(fontSize: 20)),
+            tooltip: 'Carte des salles',
+            onPressed: () => context.push('/gyms/map'),
+          ),
+        ],
+      ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Erreur : $err')),
@@ -71,6 +81,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Text('Salut ${profile.pseudo} 👋', style: Theme.of(context).textTheme.titleLarge),
                     LeagueBadge(leagueLevel: profile.leagueLevel),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Consumer(
+                  builder: (context, ref, _) {
+                    final gymAsync = ref.watch(myGymProvider);
+                    return gymAsync.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (gym) => ActionChip(
+                        avatar: const Text('📍'),
+                        label: Text(gym != null ? gym.name : 'Choisir ta salle'),
+                        onPressed: () => context.push('/gyms/map'),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -105,7 +130,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   error: (err, _) => Text('Erreur : $err'),
                   data: (userProgram) {
                     if (userProgram == null) {
-                      return NoProgramCard(onStart: _startDiscoveryProgram, loading: _enrolling);
+                      return NoProgramCard(
+                        onStartDiscovery: _startDiscoveryProgram,
+                        onCreateOwn: () => context.push('/programs/create'),
+                        loading: _enrolling,
+                      );
                     }
                     return ProgramCard(
                       userProgram: userProgram,
