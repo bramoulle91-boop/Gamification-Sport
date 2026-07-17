@@ -138,4 +138,52 @@ class ProgramService {
       currentDayLabel: (row as Map<String, dynamic>)['current_day_label'] as String,
     );
   }
+
+  /// Les exercices déjà cochés aujourd'hui par l'utilisateur courant, pour
+  /// que les cases à cocher de la séance survivent à un rechargement.
+  Future<Set<String>> fetchTodaysCompletions() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final today = DateTime.now().toUtc().toIso8601String().split('T').first;
+    final rows = await _client
+        .from('program_exercise_completions')
+        .select('program_exercise_id')
+        .eq('user_id', userId)
+        .eq('completed_on', today);
+    return (rows as List<dynamic>)
+        .map((e) => (e as Map<String, dynamic>)['program_exercise_id'] as String)
+        .toSet();
+  }
+
+  /// Coche un exercice de la séance du jour — validé par géolocalisation
+  /// côté serveur (comme le niveau 1), et déclenche un check-in visible par
+  /// les amis si c'est la première validation du jour dans cette salle. En
+  /// attendant que toutes les machines aient un QR code, c'est ce geste qui
+  /// sert de preuve de présence.
+  Future<void> completeExercise({
+    required String programExerciseId,
+    required String gymId,
+    required double lat,
+    required double lon,
+  }) async {
+    await _client.rpc('complete_program_exercise', params: {
+      'p_program_exercise_id': programExerciseId,
+      'p_gym_id': gymId,
+      'p_user_lat': lat,
+      'p_user_lon': lon,
+    });
+  }
+
+  /// Décoche un exercice précédemment validé aujourd'hui.
+  Future<void> uncompleteExercise(String programExerciseId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    final today = DateTime.now().toUtc().toIso8601String().split('T').first;
+    await _client
+        .from('program_exercise_completions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('program_exercise_id', programExerciseId)
+        .eq('completed_on', today);
+  }
 }

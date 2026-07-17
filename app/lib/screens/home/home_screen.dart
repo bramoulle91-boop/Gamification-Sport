@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/geolocation_service.dart';
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
 import '../../widgets/league_badge.dart';
@@ -17,8 +18,48 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final Set<String> _doneExerciseIds = {};
   bool _enrolling = false;
+  String? _togglingExerciseId;
+
+  /// Coche ou décoche un exercice de la séance du jour. Cocher valide la
+  /// géolocalisation côté serveur contre la salle habituelle (en attendant
+  /// que toutes les machines aient un QR code) et déclenche un check-in
+  /// visible par les amis ; décocher est libre.
+  Future<void> _toggleExercise(String exerciseId, bool currentlyDone) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (ref.read(currentUserIdProvider) == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Connecte-toi pour suivre ta séance.')),
+      );
+      return;
+    }
+    setState(() => _togglingExerciseId = exerciseId);
+    try {
+      if (currentlyDone) {
+        await ref.read(programServiceProvider).uncompleteExercise(exerciseId);
+      } else {
+        final gym = ref.read(myGymProvider).valueOrNull;
+        if (gym == null) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Choisis d\'abord ta salle habituelle sur la carte.')),
+          );
+          return;
+        }
+        final position = await GeolocationService().getCurrentPosition();
+        await ref.read(programServiceProvider).completeExercise(
+              programExerciseId: exerciseId,
+              gymId: gym.id,
+              lat: position.latitude,
+              lon: position.longitude,
+            );
+      }
+      ref.invalidate(myTodaysCompletionsProvider);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _togglingExerciseId = null);
+    }
+  }
 
   Future<void> _startDiscoveryProgram() async {
     if (ref.read(currentUserIdProvider) == null) {
@@ -136,14 +177,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         loading: _enrolling,
                       );
                     }
+                    final completionsAsync = ref.watch(myTodaysCompletionsProvider);
+                    final doneExerciseIds = completionsAsync.valueOrNull ?? <String>{};
                     return ProgramCard(
                       userProgram: userProgram,
-                      doneExerciseIds: _doneExerciseIds,
-                      onToggle: (id) => setState(() {
-                        _doneExerciseIds.contains(id)
-                            ? _doneExerciseIds.remove(id)
-                            : _doneExerciseIds.add(id);
-                      }),
+                      doneExerciseIds: doneExerciseIds,
+                      togglingExerciseId: _togglingExerciseId,
+                      onToggle: (id) => _toggleExercise(id, doneExerciseIds.contains(id)),
                       onNextDay: () async {
                         if (!isLoggedIn) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -154,7 +194,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         final messenger = ScaffoldMessenger.of(context);
                         try {
                           await ref.read(programServiceProvider).advanceToNextDay(userProgram.program);
-                          setState(_doneExerciseIds.clear);
                           ref.invalidate(myProgramProvider);
                         } catch (e) {
                           if (mounted) {

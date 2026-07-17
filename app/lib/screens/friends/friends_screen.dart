@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/friend_activity_model.dart';
 import '../../models/friendship_model.dart';
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
@@ -9,6 +10,27 @@ import '../../widgets/demo_mode_banner.dart';
 final _friendshipsProvider = FutureProvider<List<FriendshipModel>>((ref) {
   return ref.watch(friendshipServiceProvider).fetchMyFriendships();
 });
+
+/// Fil d'activité léger, en attendant les vraies notifications push :
+/// arrivée en salle ou exercice coché par un ami, déduit de ses check-ins
+/// et exercices validés récemment.
+final _friendsActivityProvider = FutureProvider<List<FriendActivityModel>>((ref) async {
+  final myId = ref.watch(currentUserIdProvider);
+  if (myId == null) return [];
+  final friendships = await ref.watch(_friendshipsProvider.future);
+  final friendIds = friendships
+      .where((f) => f.status == FriendshipStatus.unlocked)
+      .map((f) => f.userId1 == myId ? f.userId2 : f.userId1)
+      .toList();
+  return ref.watch(activityServiceProvider).fetchFriendsActivity(friendIds: friendIds);
+});
+
+String _timeAgo(DateTime at) {
+  final diff = DateTime.now().toUtc().difference(at.toUtc());
+  if (diff.inMinutes < 1) return "à l'instant";
+  if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
+  return 'il y a ${diff.inHours} h';
+}
 
 class FriendsScreen extends ConsumerStatefulWidget {
   const FriendsScreen({super.key});
@@ -62,6 +84,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
   @override
   Widget build(BuildContext context) {
     final friendshipsAsync = ref.watch(_friendshipsProvider);
+    final activityAsync = ref.watch(_friendsActivityProvider);
     final myId = ref.watch(currentUserIdProvider);
     final isLoggedIn = myId != null;
 
@@ -102,6 +125,44 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
               ],
             ),
           ),
+          if (isLoggedIn)
+            activityAsync.maybeWhen(
+              data: (activities) => activities.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Activité récente', style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 6),
+                          ...activities.map(
+                            (activity) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    activity.type == FriendActivityType.checkin
+                                        ? Icons.location_on
+                                        : Icons.check_circle,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(child: Text(activity.message, style: const TextStyle(fontSize: 13))),
+                                  Text(
+                                    _timeAgo(activity.at),
+                                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.outline),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              orElse: () => const SizedBox.shrink(),
+            ),
           Expanded(
             child: friendshipsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),

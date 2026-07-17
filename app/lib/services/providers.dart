@@ -5,6 +5,7 @@ import '../config/demo_data.dart';
 import '../models/gym_model.dart';
 import '../models/program_model.dart';
 import '../models/user_model.dart';
+import 'activity_service.dart';
 import 'auth_service.dart';
 import 'friendship_service.dart';
 import 'gym_service.dart';
@@ -18,6 +19,7 @@ import 'staff_service.dart';
 import 'supabase_service.dart';
 
 final authServiceProvider = Provider((ref) => AuthService());
+final activityServiceProvider = Provider((ref) => ActivityService());
 final performanceServiceProvider = Provider((ref) => PerformanceService());
 final friendshipServiceProvider = Provider((ref) => FriendshipService());
 final leaderboardServiceProvider = Provider((ref) => LeaderboardService());
@@ -60,4 +62,13 @@ final myGymProvider = FutureProvider<GymModel?>((ref) async {
   final gymId = profile.homeGymId;
   if (gymId == null) return null;
   return ref.watch(gymServiceProvider).fetchGymById(gymId);
+});
+
+/// Les exercices de la séance du jour déjà cochés (et validés par
+/// géolocalisation), pour que les cases à cocher survivent à un
+/// rechargement de l'écran.
+final myTodaysCompletionsProvider = FutureProvider<Set<String>>((ref) async {
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) return {};
+  return ref.watch(programServiceProvider).fetchTodaysCompletions();
 });

@@ -13,6 +13,7 @@ class ProgramCard extends StatelessWidget {
     required this.doneExerciseIds,
     required this.onToggle,
     required this.onNextDay,
+    this.togglingExerciseId,
     super.key,
   });
 
@@ -20,6 +21,7 @@ class ProgramCard extends StatelessWidget {
   final Set<String> doneExerciseIds;
   final void Function(String exerciseId) onToggle;
   final VoidCallback onNextDay;
+  final String? togglingExerciseId;
 
   @override
   Widget build(BuildContext context) {
@@ -72,8 +74,18 @@ class ProgramCard extends StatelessWidget {
           ),
           ...exercises.map((exercise) {
             final done = doneExerciseIds.contains(exercise.id);
+            final toggling = togglingExerciseId == exercise.id;
             return ListTile(
-              leading: Checkbox(value: done, onChanged: (_) => onToggle(exercise.id)),
+              leading: toggling
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Padding(
+                        padding: EdgeInsets.all(2),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : Checkbox(value: done, onChanged: (_) => onToggle(exercise.id)),
               title: Text(
                 exercise.exerciseName,
                 style: done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
