@@ -16,30 +16,48 @@ class OsmGymService {
     required double north,
     required double east,
   }) async {
+    // Couvre plusieurs façons de tagger une salle de sport sur OSM, et les
+    // bâtiments (way) en plus des simples points (node), avec leur centre.
+    final bbox = '$south,$west,$north,$east';
     final query = '[out:json][timeout:25];'
-        'node["leisure"="fitness_centre"]($south,$west,$north,$east);'
-        'out body;';
+        '('
+        'node["leisure"="fitness_centre"]($bbox);'
+        'way["leisure"="fitness_centre"]($bbox);'
+        'node["sport"="fitness"]($bbox);'
+        'way["sport"="fitness"]($bbox);'
+        ');'
+        'out center;';
     final uri = Uri.parse(_endpoint).replace(queryParameters: {'data': query});
 
-    final response = await http.get(uri).timeout(const Duration(seconds: 20));
+    final http.Response response;
+    try {
+      response = await http.get(uri).timeout(const Duration(seconds: 20));
+    } catch (e) {
+      throw Exception('Connexion à OpenStreetMap impossible : $e');
+    }
     if (response.statusCode != 200) {
-      throw Exception('Impossible de charger les salles à proximité (${response.statusCode}).');
+      throw Exception(
+        'OpenStreetMap a répondu avec une erreur ${response.statusCode} : '
+        '${response.body.length > 200 ? response.body.substring(0, 200) : response.body}',
+      );
     }
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final elements = data['elements'] as List<dynamic>? ?? [];
 
-    return elements
-        .map((e) => e as Map<String, dynamic>)
-        .where((e) => e['lat'] != null && e['lon'] != null)
-        .map((e) {
-          final tags = e['tags'] as Map<String, dynamic>?;
-          return OsmGymCandidate(
-            name: (tags?['name'] as String?) ?? 'Salle de sport',
-            latitude: (e['lat'] as num).toDouble(),
-            longitude: (e['lon'] as num).toDouble(),
-          );
-        })
-        .toList();
+    final candidates = <OsmGymCandidate>[];
+    for (final raw in elements) {
+      final element = raw as Map<String, dynamic>;
+      final lat = element['lat'] as num? ?? (element['center'] as Map<String, dynamic>?)?['lat'] as num?;
+      final lon = element['lon'] as num? ?? (element['center'] as Map<String, dynamic>?)?['lon'] as num?;
+      if (lat == null || lon == null) continue;
+      final tags = element['tags'] as Map<String, dynamic>?;
+      candidates.add(OsmGymCandidate(
+        name: (tags?['name'] as String?) ?? 'Salle de sport',
+        latitude: lat.toDouble(),
+        longitude: lon.toDouble(),
+      ));
+    }
+    return candidates;
   }
 }

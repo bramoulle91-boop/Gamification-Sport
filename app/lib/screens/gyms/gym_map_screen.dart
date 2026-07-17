@@ -199,20 +199,55 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                     ),
                   ),
                 if (!_addingMode)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Row(
-                        children: [
-                          Icon(Icons.location_on_outlined, color: scheme.outline, size: 18),
-                          const SizedBox(width: 6),
-                          const Expanded(
-                            child: Text(
-                              'Repères fins = salles connues à valider · repères pleins = déjà confirmées',
-                              style: TextStyle(fontSize: 12),
+                  osmAsync.when(
+                    loading: () => const Card(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Row(
+                          children: [
+                            SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                            SizedBox(width: 8),
+                            Text('Recherche des salles OpenStreetMap à proximité…', style: TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    error: (err, _) => Card(
+                      color: scheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'OpenStreetMap indisponible : $err',
+                                style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    data: (candidates) => Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(Icons.location_on_outlined, color: scheme.outline, size: 18),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                candidates.isEmpty
+                                    ? 'Aucune salle OpenStreetMap trouvée dans cette zone.'
+                                    : '${candidates.length} salle(s) OpenStreetMap trouvée(s) — repères fins à valider.',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
