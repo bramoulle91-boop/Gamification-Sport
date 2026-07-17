@@ -10,6 +10,7 @@ import 'friendship_service.dart';
 import 'gym_service.dart';
 import 'leaderboard_service.dart';
 import 'machine_king_service.dart';
+import 'osm_gym_service.dart';
 import 'performance_service.dart';
 import 'program_service.dart';
 import 'rewards_service.dart';
@@ -25,6 +26,7 @@ final staffServiceProvider = Provider((ref) => StaffService());
 final programServiceProvider = Provider((ref) => ProgramService());
 final machineKingServiceProvider = Provider((ref) => MachineKingService());
 final gymServiceProvider = Provider((ref) => GymService());
+final osmGymServiceProvider = Provider((ref) => OsmGymService());
 
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return ref.watch(authServiceProvider).authStateChanges;
