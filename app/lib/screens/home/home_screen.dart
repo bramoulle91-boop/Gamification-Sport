@@ -4,14 +4,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
 import '../../widgets/league_badge.dart';
+import '../../widgets/program_card.dart';
 import '../../widgets/stat_tile.dart';
+import '../../widgets/streak_row.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final Set<String> _doneExerciseIds = {};
+  bool _enrolling = false;
+
+  Future<void> _startDiscoveryProgram() async {
+    if (ref.read(currentUserIdProvider) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connecte-toi pour démarrer un programme.')),
+      );
+      return;
+    }
+    setState(() => _enrolling = true);
+    try {
+      final program = await ref.read(programServiceProvider).fetchDiscoveryProgram();
+      await ref.read(programServiceProvider).enroll(program);
+      ref.invalidate(myProgramProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _enrolling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final profileAsync = ref.watch(currentProfileProvider);
+    final programAsync = ref.watch(myProgramProvider);
     final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
     return Scaffold(
@@ -22,7 +54,10 @@ class HomeScreen extends ConsumerWidget {
         data: (profile) {
           final streakCount = profile.streakHistory.length;
           return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(currentProfileProvider),
+            onRefresh: () async {
+              ref.invalidate(currentProfileProvider);
+              ref.invalidate(myProgramProvider);
+            },
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -56,6 +91,50 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                StreakRow(activeDays: streakCount.clamp(0, 7)),
+                const SizedBox(height: 24),
+                Text('Ta séance', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                programAsync.when(
+                  loading: () => const Center(child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(),
+                  )),
+                  error: (err, _) => Text('Erreur : $err'),
+                  data: (userProgram) {
+                    if (userProgram == null) {
+                      return NoProgramCard(onStart: _startDiscoveryProgram, loading: _enrolling);
+                    }
+                    return ProgramCard(
+                      userProgram: userProgram,
+                      doneExerciseIds: _doneExerciseIds,
+                      onToggle: (id) => setState(() {
+                        _doneExerciseIds.contains(id)
+                            ? _doneExerciseIds.remove(id)
+                            : _doneExerciseIds.add(id);
+                      }),
+                      onNextDay: () async {
+                        if (!isLoggedIn) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Connecte-toi pour suivre ta progression.')),
+                          );
+                          return;
+                        }
+                        final messenger = ScaffoldMessenger.of(context);
+                        try {
+                          await ref.read(programServiceProvider).advanceToNextDay(userProgram.program);
+                          setState(_doneExerciseIds.clear);
+                          ref.invalidate(myProgramProvider);
+                        } catch (e) {
+                          if (mounted) {
+                            messenger.showSnackBar(SnackBar(content: Text('Erreur : $e')));
+                          }
+                        }
+                      },
+                    );
+                  },
                 ),
                 const SizedBox(height: 24),
                 Text('Comment valider une perf ?', style: Theme.of(context).textTheme.titleMedium),
