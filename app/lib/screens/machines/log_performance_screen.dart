@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/performance_model.dart';
 import '../../services/providers.dart';
 
 enum _SubmitLevel { routine, recordOrDuel, highStakes }
@@ -37,14 +38,27 @@ class _LogPerformanceScreenState extends ConsumerState<LogPerformanceScreen> {
           _error = null;
         });
         try {
-          await ref.read(performanceServiceProvider).logLevel1(
-                machineId: widget.machineId,
-                weightKg: weight,
-                reps: reps,
-              );
+          final service = ref.read(performanceServiceProvider);
+          // Capturé avant l'envoi : après, la nouvelle perf fausserait la comparaison.
+          final previousBest = await service.fetchPersonalBest(widget.machineId);
+          final performance = await service.logLevel1(
+            machineId: widget.machineId,
+            weightKg: weight,
+            reps: reps,
+          );
           if (mounted) {
-            ScaffoldMessenger.of(context)
-                .showSnackBar(const SnackBar(content: Text('Performance validée ✅')));
+            final isNewRecord = performance.validationStatus == ValidationStatus.validated &&
+                (previousBest == null || weight > previousBest);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  isNewRecord
+                      ? '🎉 Nouveau record personnel sur cette machine !'
+                      : 'Performance validée ✅',
+                ),
+                duration: isNewRecord ? const Duration(seconds: 4) : const Duration(seconds: 3),
+              ),
+            );
             context.go('/home');
           }
         } catch (e) {

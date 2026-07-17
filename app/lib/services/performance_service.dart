@@ -151,6 +151,26 @@ class PerformanceService {
         .toList();
   }
 
+  /// Le meilleur poids déjà validé par l'utilisateur courant sur cette
+  /// machine, ou `null` s'il n'a encore rien validé dessus. Sert à détecter
+  /// les records personnels — l'idée étant que se dépasser soi-même compte
+  /// autant que de viser la meilleure performance absolue de la salle.
+  Future<double?> fetchPersonalBest(String machineId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+    final rows = await _client
+        .from('performances')
+        .select('weight_kg')
+        .eq('user_id', userId)
+        .eq('machine_id', machineId)
+        .eq('validation_status', 'VALIDATED')
+        .order('weight_kg', ascending: false)
+        .limit(1);
+    final list = rows as List<dynamic>;
+    if (list.isEmpty) return null;
+    return ((list.first as Map<String, dynamic>)['weight_kg'] as num).toDouble();
+  }
+
   Future<List<PerformanceModel>> fetchPendingLevel3ForStaff(String gymId) async {
     final rows = await _client
         .from('performances')
