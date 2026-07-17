@@ -49,7 +49,10 @@ class ProgramService {
   }
 
   Future<void> enroll(ProgramModel program) async {
-    final userId = _client.auth.currentUser!.id;
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour démarrer un programme.');
+    }
     await _client.from('user_programs').insert({
       'user_id': userId,
       'program_id': program.id,

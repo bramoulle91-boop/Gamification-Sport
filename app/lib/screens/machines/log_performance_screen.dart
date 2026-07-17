@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/performance_model.dart';
 import '../../services/providers.dart';
+import '../../widgets/demo_mode_banner.dart';
 
 enum _SubmitLevel { routine, recordOrDuel, highStakes }
 
@@ -28,6 +29,13 @@ class _LogPerformanceScreenState extends ConsumerState<LogPerformanceScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (ref.read(currentUserIdProvider) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connecte-toi pour valider une performance.')),
+      );
+      context.push('/login');
+      return;
+    }
     final weight = double.parse(_weightController.text.replaceAll(',', '.'));
     final reps = int.parse(_repsController.text);
 
@@ -81,6 +89,7 @@ class _LogPerformanceScreenState extends ConsumerState<LogPerformanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLoggedIn = ref.watch(currentUserIdProvider) != null;
     return Scaffold(
       appBar: AppBar(title: const Text('Nouvelle performance')),
       body: Padding(
@@ -90,6 +99,10 @@ class _LogPerformanceScreenState extends ConsumerState<LogPerformanceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!isLoggedIn) ...[
+                const DemoModeBanner(),
+                const SizedBox(height: 16),
+              ],
               TextFormField(
                 controller: _weightController,
                 decoration: const InputDecoration(labelText: 'Poids (kg)'),

@@ -12,7 +12,10 @@ class RewardsService {
   }
 
   Future<void> redeem(RewardModel reward) async {
-    final userId = _client.auth.currentUser!.id;
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour échanger des points.');
+    }
     await _client.from('reward_redemptions').insert({
       'reward_id': reward.id,
       'user_id': userId,

@@ -8,7 +8,10 @@ class FriendshipService {
   final SupabaseClient _client = SupabaseService.client;
 
   Future<void> sendRequest(String friendUserId) async {
-    final userId = _client.auth.currentUser!.id;
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour ajouter des amis.');
+    }
     await _client.from('friendships').insert({
       'user_id_1': userId,
       'user_id_2': friendUserId,

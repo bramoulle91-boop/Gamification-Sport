@@ -16,6 +16,14 @@ class PerformanceService {
   final GeolocationService _geolocation;
   final _uuid = const Uuid();
 
+  String _requireUserId() {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour valider une performance.');
+    }
+    return userId;
+  }
+
   /// Niveau 1 — routine : géolocalisation + cohérence temporelle, tout est
   /// vérifié côté serveur (RPC `log_performance_level1`) pour éviter la triche client.
   Future<PerformanceModel> logLevel1({
@@ -23,6 +31,7 @@ class PerformanceService {
     required double weightKg,
     required int reps,
   }) async {
+    _requireUserId();
     final position = await _geolocation.getCurrentPosition();
     final row = await _client.rpc('log_performance_level1', params: {
       'p_machine_id': machineId,
@@ -42,7 +51,7 @@ class PerformanceService {
     required int reps,
     required File photoFile,
   }) async {
-    final userId = _client.auth.currentUser!.id;
+    final userId = _requireUserId();
     final path = '$userId/${_uuid.v4()}.jpg';
     await _client.storage.from('proof-media').upload(path, photoFile);
 
@@ -62,6 +71,7 @@ class PerformanceService {
     required double weightKg,
     required int reps,
   }) async {
+    _requireUserId();
     final row = await _client.rpc('log_performance_level2_pending', params: {
       'p_machine_id': machineId,
       'p_weight_kg': weightKg,
@@ -94,9 +104,9 @@ class PerformanceService {
     required int reps,
     File? proofVideoFile,
   }) async {
+    final userId = _requireUserId();
     String? videoPath;
     if (proofVideoFile != null) {
-      final userId = _client.auth.currentUser!.id;
       videoPath = '$userId/${_uuid.v4()}.mp4';
       await _client.storage.from('proof-media').upload(videoPath, proofVideoFile);
     }
@@ -125,9 +135,10 @@ class PerformanceService {
     required String performanceId,
     required bool approve,
   }) async {
+    final userId = _requireUserId();
     await _client.from('peer_jury_votes').insert({
       'performance_id': performanceId,
-      'voter_id': _client.auth.currentUser!.id,
+      'voter_id': userId,
       'approve': approve,
     });
   }
