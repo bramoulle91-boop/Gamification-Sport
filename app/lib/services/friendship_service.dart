@@ -33,8 +33,8 @@ class FriendshipService {
     final rows = await _client
         .from('friendships')
         .select(
-          '*, user_1:user_id_1(pseudo,total_points,streak_history), '
-          'user_2:user_id_2(pseudo,total_points,streak_history)',
+          '*, user_1:user_id_1(pseudo,total_points,streak_history,home_gym_id), '
+          'user_2:user_id_2(pseudo,total_points,streak_history,home_gym_id)',
         )
         .or('user_id_1.eq.$userId,user_id_2.eq.$userId');
     return (rows as List<dynamic>)

@@ -13,9 +13,11 @@ class FriendshipModel {
     this.user1Pseudo,
     this.user1TotalPoints,
     this.user1StreakDays,
+    this.user1HomeGymId,
     this.user2Pseudo,
     this.user2TotalPoints,
     this.user2StreakDays,
+    this.user2HomeGymId,
   });
 
   factory FriendshipModel.fromMap(Map<String, dynamic> map) {
@@ -29,9 +31,11 @@ class FriendshipModel {
       user1Pseudo: user1?['pseudo'] as String?,
       user1TotalPoints: (user1?['total_points'] as num?)?.toInt(),
       user1StreakDays: (user1?['streak_history'] as List<dynamic>?)?.length,
+      user1HomeGymId: user1?['home_gym_id'] as String?,
       user2Pseudo: user2?['pseudo'] as String?,
       user2TotalPoints: (user2?['total_points'] as num?)?.toInt(),
       user2StreakDays: (user2?['streak_history'] as List<dynamic>?)?.length,
+      user2HomeGymId: user2?['home_gym_id'] as String?,
     );
   }
 
@@ -42,11 +46,14 @@ class FriendshipModel {
   final String? user1Pseudo;
   final int? user1TotalPoints;
   final int? user1StreakDays;
+  final String? user1HomeGymId;
   final String? user2Pseudo;
   final int? user2TotalPoints;
   final int? user2StreakDays;
+  final String? user2HomeGymId;
 
   String pseudoForOther(String myId) => myId == userId1 ? (user2Pseudo ?? userId2) : (user1Pseudo ?? userId1);
   int pointsForOther(String myId) => myId == userId1 ? (user2TotalPoints ?? 0) : (user1TotalPoints ?? 0);
   int streakForOther(String myId) => myId == userId1 ? (user2StreakDays ?? 0) : (user1StreakDays ?? 0);
+  String? homeGymIdForOther(String myId) => myId == userId1 ? user2HomeGymId : user1HomeGymId;
 }

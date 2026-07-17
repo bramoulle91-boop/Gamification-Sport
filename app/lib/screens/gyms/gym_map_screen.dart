@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -6,11 +7,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/friendship_model.dart';
 import '../../models/gym_model.dart';
+import '../../models/machine_king_model.dart';
 import '../../models/osm_gym_candidate.dart';
 import '../../services/geolocation_service.dart';
 import '../../services/providers.dart';
+
+// === DESIGN SYSTEM — STYLE SPORT CHIC =====================================
+const _kBackground = Color(0xFF000000);
+const _kCard = Color(0xFF121212);
+const _kBorder = Color(0xFF1C1C1E);
+const _kAccent = Color(0xFF00E676);
+const _kMuted = Color(0xFF8E8E93);
+const _kGold = Color(0xFFFFD60A);
 
 final _gymsProvider = FutureProvider<List<GymModel>>((ref) {
   return ref.watch(gymServiceProvider).fetchAllGyms();
@@ -26,6 +38,14 @@ final _osmCandidatesProvider = FutureProvider<List<OsmGymCandidate>>((ref) {
         north: 48.9,
         east: -0.9,
       );
+});
+
+final _myFriendshipsProvider = FutureProvider<List<FriendshipModel>>((ref) {
+  return ref.watch(friendshipServiceProvider).fetchMyFriendships();
+});
+
+final _gymKingsProvider = FutureProvider.family<List<MachineKingModel>, String>((ref, gymId) {
+  return ref.watch(machineKingServiceProvider).fetchMachineKings(gymId: gymId);
 });
 
 double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
@@ -61,11 +81,12 @@ class _SearchResult {
   final OsmGymCandidate? osmCandidate;
 }
 
-/// Carte des salles : les salles déjà confirmées dans GymQuest (repère plein,
-/// on tape pour ouvrir la fiche), les salles connues d'OpenStreetMap pas
-/// encore confirmées (repère fin, on tape pour les valider), une recherche
-/// par nom, et un mode ajout libre pour les salles absentes des deux. Fond
-/// de carte CARTO Voyager (gratuit, pas de clé requise).
+/// Carte des salles, style "Sport Chic" (fond noir, accents vert émeraude) :
+/// les salles déjà confirmées dans GymQuest ouvrent une fiche coulissante
+/// avec l'affluence réelle, les amis qui s'y entraînent et le record en
+/// cours sur une machine ; les salles connues d'OpenStreetMap pas encore
+/// confirmées se valident d'un tap ; recherche par nom ; mode ajout libre ;
+/// géolocalisation avec salles les plus proches.
 class GymMapScreen extends ConsumerStatefulWidget {
   const GymMapScreen({super.key});
 
@@ -82,6 +103,7 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
   bool _locating = false;
   String _query = '';
   Position? _userPosition;
+  GymModel? _selectedGym;
 
   @override
   void initState() {
@@ -143,13 +165,10 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(candidate.name),
-        content: const Text('Ajouter cette salle à GymQuest ?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Valider')),
-        ],
+      builder: (context) => _DarkAlertDialog(
+        title: candidate.name,
+        content: 'Ajouter cette salle à GymQuest ?',
+        confirmLabel: 'Valider',
       ),
     );
     if (confirmed != true) return;
@@ -173,17 +192,34 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
     }
   }
 
+  void _selectGym(GymModel gym) {
+    _mapController.move(LatLng(gym.latitude, gym.longitude), 15);
+    setState(() => _selectedGym = gym);
+  }
+
   void _selectSearchResult(_SearchResult result) {
-    _mapController.move(LatLng(result.latitude, result.longitude), 15);
     setState(() {
       _query = '';
       _searchController.clear();
     });
     FocusScope.of(context).unfocus();
     if (result.gym != null) {
-      context.push('/gyms/${result.gym!.id}');
+      _selectGym(result.gym!);
     } else if (result.osmCandidate != null) {
+      _mapController.move(LatLng(result.latitude, result.longitude), 15);
       _confirmOsmCandidate(result.osmCandidate!);
+    }
+  }
+
+  Future<void> _openDirections(GymModel gym) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=${gym.latitude},${gym.longitude}',
+    );
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Impossible d'ouvrir l'itinéraire.")),
+      );
     }
   }
 
@@ -191,7 +227,6 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
   Widget build(BuildContext context) {
     final gymsAsync = ref.watch(_gymsProvider);
     final osmAsync = ref.watch(_osmCandidatesProvider);
-    final scheme = Theme.of(context).colorScheme;
     final myGymId = ref.watch(myGymProvider).valueOrNull?.id;
 
     final gyms = gymsAsync.valueOrNull ?? [];
@@ -218,32 +253,37 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
             .compareTo(_distanceMeters(
                 _userPosition!.latitude, _userPosition!.longitude, b.latitude, b.longitude))));
 
+    final sheetOpen = _selectedGym != null;
+
     return Scaffold(
+      backgroundColor: _kBackground,
       appBar: AppBar(
+        backgroundColor: _kBackground,
+        foregroundColor: Colors.white,
+        elevation: 0,
         title: const Text('Salles partenaires'),
-        actions: [
-          IconButton(
-            tooltip: 'Aperçu design Sport Chic',
-            icon: const Icon(Icons.auto_awesome),
-            onPressed: () => context.push('/gyms/map-sport-chic'),
-          ),
-        ],
       ),
       body: Stack(
         children: [
           gymsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (err, _) => Center(child: Text('Erreur : $err')),
+            loading: () => const Center(child: CircularProgressIndicator(color: _kAccent)),
+            error: (err, _) => Center(child: Text('Erreur : $err', style: const TextStyle(color: Colors.white))),
             data: (gyms) => FlutterMap(
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: _brittanyCenter,
                 initialZoom: 9,
-                onTap: (tapPosition, point) => _handleMapTap(point),
+                onTap: (tapPosition, point) {
+                  if (_addingMode) {
+                    _handleMapTap(point);
+                  } else if (_selectedGym != null) {
+                    setState(() => _selectedGym = null);
+                  }
+                },
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                  urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
                   subdomains: const ['a', 'b', 'c', 'd'],
                   userAgentPackageName: 'app.gymquest',
                 ),
@@ -256,7 +296,7 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                         height: 36,
                         child: GestureDetector(
                           onTap: () => _confirmOsmCandidate(candidate),
-                          child: _OsmPin(color: scheme.outline),
+                          child: const _OsmPin(),
                         ),
                       ),
                     ),
@@ -266,62 +306,48 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                         width: 46,
                         height: 46,
                         child: GestureDetector(
-                          onTap: () => context.push('/gyms/${gym.id}'),
-                          child: _GymPin(
-                            color: gym.id == myGymId ? Colors.amber.shade700 : scheme.primary,
-                            isMine: gym.id == myGymId,
-                          ),
+                          onTap: () => _selectGym(gym),
+                          child: _GymPin(isMine: gym.id == myGymId),
                         ),
                       ),
                     ),
                     if (_userPosition != null)
                       Marker(
                         point: LatLng(_userPosition!.latitude, _userPosition!.longitude),
-                        width: 26,
-                        height: 26,
-                        child: const _MyLocationPin(),
+                        width: 70,
+                        height: 70,
+                        child: const IgnorePointer(child: _PulsingUserDot()),
                       ),
                   ],
                 ),
-                RichAttributionWidget(
+                const RichAttributionWidget(
                   attributions: [
-                    TextSourceAttribution('© OpenStreetMap · © CARTO', onTap: () {}),
+                    TextSourceAttribution('© OpenStreetMap · © CARTO'),
                   ],
                 ),
               ],
             ),
           ),
           Positioned(
-            top: 12,
+            top: MediaQuery.of(context).padding.top + 8,
             left: 12,
             right: 12,
             child: Column(
               children: [
-                Material(
-                  elevation: 3,
-                  borderRadius: BorderRadius.circular(28),
+                _GlassContainer(
+                  borderRadius: 28,
                   child: TextField(
                     controller: _searchController,
                     onChanged: (v) => setState(() => _query = v),
-                    decoration: InputDecoration(
-                      hintText: 'Chercher une salle par son nom…',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _query.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () => setState(() {
-                                _query = '';
-                                _searchController.clear();
-                              }),
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: Theme.of(context).colorScheme.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    style: const TextStyle(color: Colors.white),
+                    cursorColor: _kAccent,
+                    decoration: const InputDecoration(
+                      hintText: 'Rechercher une salle, une ville…',
+                      hintStyle: TextStyle(color: _kMuted),
+                      prefixIcon: Icon(Icons.search, color: _kMuted),
+                      suffixIcon: null,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ),
@@ -329,11 +355,9 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                   Container(
                     margin: const EdgeInsets.only(top: 6),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
+                      color: _kCard,
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12, offset: const Offset(0, 4)),
-                      ],
+                      border: Border.all(color: _kBorder),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -341,16 +365,33 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                           .map((result) => ListTile(
                                 dense: true,
                                 leading: Icon(
-                                  result.gym != null ? Icons.location_on : Icons.location_on_outlined,
-                                  color: result.gym != null ? scheme.primary : scheme.outline,
+                                  result.gym != null ? Icons.fitness_center : Icons.location_on_outlined,
+                                  color: result.gym != null ? _kAccent : _kMuted,
                                 ),
-                                title: Text(result.name),
-                                subtitle: Text(result.gym != null ? 'Salle GymQuest' : 'À valider (OpenStreetMap)'),
+                                title: Text(result.name, style: const TextStyle(color: Colors.white)),
+                                subtitle: Text(
+                                  result.gym != null ? 'Salle GymQuest' : 'À valider (OpenStreetMap)',
+                                  style: const TextStyle(color: _kMuted),
+                                ),
                                 onTap: () => _selectSearchResult(result),
                               ))
                           .toList(),
                     ),
                   ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _GlassContainer(
+                    borderRadius: 100,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Text(
+                      _userPosition != null
+                          ? '🟢 Position activée — scanne une machine pour valider'
+                          : '⚪ Active ta position pour voir les salles proches',
+                      style: const TextStyle(color: _kMuted, fontSize: 12, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
                 if (!_addingMode && searchResults.isEmpty && nearbyGyms.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -370,10 +411,14 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                               ) /
                               1000;
                           return ActionChip(
-                            avatar: Icon(Icons.near_me, size: 15, color: scheme.primary),
-                            label: Text('${gym.name} · ${distKm.toStringAsFixed(1)} km'),
-                            backgroundColor: Theme.of(context).colorScheme.surface,
-                            onPressed: () => _selectSearchResult(_SearchResult.gym(gym)),
+                            avatar: const Icon(Icons.near_me, size: 15, color: _kAccent),
+                            label: Text(
+                              '${gym.name} · ${distKm.toStringAsFixed(1)} km',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
+                            backgroundColor: _kCard,
+                            side: const BorderSide(color: _kBorder),
+                            onPressed: () => _selectGym(gym),
                           );
                         },
                       ),
@@ -381,80 +426,84 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
                   ),
                 const SizedBox(height: 8),
                 if (_addingMode)
-                  Card(
-                    color: scheme.primaryContainer,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _kCard,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: _kAccent.withOpacity(0.4)),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          Icon(Icons.touch_app, color: scheme.onPrimaryContainer),
+                          const Icon(Icons.touch_app, color: _kAccent),
                           const SizedBox(width: 8),
-                          Expanded(
+                          const Expanded(
                             child: Text(
                               "Tape sur la carte à l'endroit de la salle à ajouter",
-                              style: TextStyle(color: scheme.onPrimaryContainer),
+                              style: TextStyle(color: Colors.white),
                             ),
                           ),
-                          if (_busy) const CircularProgressIndicator(strokeWidth: 2),
+                          if (_busy) const CircularProgressIndicator(strokeWidth: 2, color: _kAccent),
                         ],
                       ),
                     ),
                   ),
                 if (!_addingMode && searchResults.isEmpty)
                   osmAsync.when(
-                    loading: () => const Card(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-                            SizedBox(width: 8),
-                            Text('Recherche des salles OpenStreetMap à proximité…', style: TextStyle(fontSize: 12)),
-                          ],
-                        ),
-                      ),
+                    loading: () => const _StatusCard(
+                      icon: null,
+                      loading: true,
+                      text: 'Recherche des salles OpenStreetMap à proximité…',
                     ),
-                    error: (err, _) => Card(
-                      color: scheme.errorContainer,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 18),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'OpenStreetMap indisponible : $err',
-                                style: TextStyle(color: scheme.onErrorContainer, fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    error: (err, _) => _StatusCard(
+                      icon: Icons.error_outline,
+                      iconColor: const Color(0xFFFF453A),
+                      text: 'OpenStreetMap indisponible : $err',
                     ),
-                    data: (candidates) => Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Row(
-                          children: [
-                            Icon(Icons.location_on_outlined, color: scheme.outline, size: 18),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                candidates.isEmpty
-                                    ? 'Aucune salle OpenStreetMap trouvée dans cette zone.'
-                                    : '${candidates.length} salle(s) OpenStreetMap trouvée(s) — repères fins à valider.',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    data: (candidates) => _StatusCard(
+                      icon: Icons.location_on_outlined,
+                      iconColor: _kMuted,
+                      text: candidates.isEmpty
+                          ? 'Aucune salle OpenStreetMap trouvée dans cette zone.'
+                          : '${candidates.length} salle(s) OpenStreetMap trouvée(s) — repères fins à valider.',
                     ),
                   ),
               ],
             ),
+          ),
+
+          // === SCRIM + FICHE SALLE =========================================
+          IgnorePointer(
+            ignoring: !sheetOpen,
+            child: AnimatedOpacity(
+              opacity: sheetOpen ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedGym = null),
+                child: Container(color: Colors.black.withOpacity(0.55)),
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            left: 0,
+            right: 0,
+            bottom: sheetOpen ? 0 : -700,
+            child: _selectedGym == null
+                ? const SizedBox.shrink()
+                : _GymBottomSheet(
+                    gym: _selectedGym!,
+                    isMyGym: _selectedGym!.id == myGymId,
+                    onClose: () => setState(() => _selectedGym = null),
+                    onGoTo: () => _openDirections(_selectedGym!),
+                    onSeeGym: () {
+                      final gymId = _selectedGym!.id;
+                      setState(() => _selectedGym = null);
+                      context.push('/gyms/$gymId');
+                    },
+                  ),
           ),
         ],
       ),
@@ -466,22 +515,28 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
             heroTag: 'locate',
             mini: true,
             tooltip: 'Ma position',
+            backgroundColor: _kCard,
+            foregroundColor: _kAccent,
             onPressed: _locating ? null : () => _locateUser(manual: true),
             child: _locating
                 ? const SizedBox(
                     height: 18,
                     width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: _kAccent),
                   )
                 : const Icon(Icons.my_location),
           ),
           const SizedBox(height: 12),
           FloatingActionButton.extended(
             heroTag: 'addGym',
+            backgroundColor: _addingMode ? const Color(0xFF3A0F0F) : _kCard,
+            foregroundColor: _addingMode ? const Color(0xFFFF453A) : _kAccent,
             onPressed: () => setState(() => _addingMode = !_addingMode),
             icon: Icon(_addingMode ? Icons.close : Icons.add_location_alt),
-            label: Text(_addingMode ? 'Annuler' : 'Ajouter une salle'),
-            backgroundColor: _addingMode ? scheme.errorContainer : null,
+            label: Text(
+              _addingMode ? 'Annuler' : 'Ajouter une salle',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),
@@ -489,82 +544,524 @@ class _GymMapScreenState extends ConsumerState<GymMapScreen> {
   }
 }
 
-/// Repère d'une salle confirmée : pastille pleine avec ombre portée, dorée
-/// et étoilée pour "ma salle", verte sinon.
-class _GymPin extends StatelessWidget {
-  const _GymPin({required this.color, required this.isMine});
+/// Conteneur "verre dépoli" réutilisé pour la recherche et les pilules de statut.
+class _GlassContainer extends StatelessWidget {
+  const _GlassContainer({required this.child, required this.borderRadius, this.padding});
 
-  final Color color;
+  final Widget child;
+  final double borderRadius;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: _kCard.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(borderRadius),
+            border: Border.all(color: _kBorder, width: 1),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.text, this.icon, this.iconColor, this.loading = false});
+
+  final String text;
+  final IconData? icon;
+  final Color? iconColor;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _kCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _kBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (loading)
+              const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _kAccent))
+            else if (icon != null)
+              Icon(icon, color: iconColor, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: const TextStyle(color: _kMuted, fontSize: 12))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Point bleu de l'utilisateur avec halo vert émeraude pulsant.
+class _PulsingUserDot extends StatefulWidget {
+  const _PulsingUserDot();
+
+  @override
+  State<_PulsingUserDot> createState() => _PulsingUserDotState();
+}
+
+class _PulsingUserDotState extends State<_PulsingUserDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Opacity(
+              opacity: (1 - t).clamp(0.0, 1.0),
+              child: Container(
+                width: 20 + t * 46,
+                height: 20 + t * 46,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _kAccent, width: 2),
+                ),
+              ),
+            ),
+            child!,
+          ],
+        );
+      },
+      child: Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xFF3A7CFF),
+          border: Border.all(color: Colors.white, width: 2.5),
+          boxShadow: [BoxShadow(color: _kAccent.withOpacity(0.7), blurRadius: 10)],
+        ),
+      ),
+    );
+  }
+}
+
+/// Repère d'une salle confirmée : haltère vert émeraude, doré et étoilé pour
+/// "ma salle".
+class _GymPin extends StatelessWidget {
+  const _GymPin({required this.isMine});
+
   final bool isMine;
 
   @override
   Widget build(BuildContext context) {
+    final color = isMine ? _kGold : _kAccent;
     return Container(
       decoration: BoxDecoration(
-        color: color,
+        color: _kCard,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2.5),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 6, offset: const Offset(0, 2)),
-        ],
+        border: Border.all(color: color, width: 2.5),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 3))],
       ),
-      child: Icon(
-        isMine ? Icons.star : Icons.fitness_center,
-        color: Colors.white,
-        size: 20,
-      ),
+      child: Icon(isMine ? Icons.star : Icons.fitness_center, color: color, size: 20),
     );
   }
 }
 
-/// Repère d'une salle OpenStreetMap pas encore validée : plus discret,
-/// contour uniquement, pour bien la distinguer d'une salle confirmée.
+/// Repère d'une salle OpenStreetMap pas encore validée : discret, gris mat.
 class _OsmPin extends StatelessWidget {
-  const _OsmPin({required this.color});
-
-  final Color color;
+  const _OsmPin();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
+        color: _kCard.withOpacity(0.85),
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 2),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 4, offset: const Offset(0, 1)),
-        ],
+        border: Border.all(color: _kMuted, width: 2),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 4, offset: const Offset(0, 1))],
       ),
-      child: Icon(Icons.add_location_alt_outlined, color: color, size: 16),
+      child: const Icon(Icons.add_location_alt_outlined, color: _kMuted, size: 16),
     );
   }
 }
 
-/// Position actuelle de l'utilisateur : point bleu classique façon Google
-/// Maps, pour se repérer par rapport aux salles affichées.
-class _MyLocationPin extends StatelessWidget {
-  const _MyLocationPin();
+_AttendanceLevel _levelFor(double rate) {
+  if (rate < 0.4) return _AttendanceLevel.calm;
+  if (rate < 0.75) return _AttendanceLevel.moderate;
+  return _AttendanceLevel.saturated;
+}
+
+enum _AttendanceLevel { calm, moderate, saturated }
+
+extension on _AttendanceLevel {
+  Color get color {
+    switch (this) {
+      case _AttendanceLevel.calm:
+        return _kAccent;
+      case _AttendanceLevel.moderate:
+        return const Color(0xFFFF9F0A);
+      case _AttendanceLevel.saturated:
+        return const Color(0xFFFF453A);
+    }
+  }
+
+  String get emoji {
+    switch (this) {
+      case _AttendanceLevel.calm:
+        return '🟢';
+      case _AttendanceLevel.moderate:
+        return '🟠';
+      case _AttendanceLevel.saturated:
+        return '🔴';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case _AttendanceLevel.calm:
+        return 'Calme';
+      case _AttendanceLevel.moderate:
+        return 'Modérée';
+      case _AttendanceLevel.saturated:
+        return 'Saturée';
+    }
+  }
+}
+
+Color _colorForPseudo(String pseudo) {
+  const palette = [
+    Color(0xFF3A7CFF),
+    Color(0xFFFF7A3A),
+    Color(0xFFB84AFF),
+    Color(0xFFFF4A9C),
+    Color(0xFF00E676),
+    Color(0xFFFFD60A),
+  ];
+  return palette[pseudo.hashCode.abs() % palette.length];
+}
+
+/// Fiche coulissante d'une salle confirmée : affluence réelle, amis qui s'y
+/// entraînent (salle habituelle en commun) et record en cours sur une
+/// machine de la salle, avec itinéraire et accès aux machines.
+class _GymBottomSheet extends ConsumerWidget {
+  const _GymBottomSheet({
+    required this.gym,
+    required this.isMyGym,
+    required this.onClose,
+    required this.onGoTo,
+    required this.onSeeGym,
+  });
+
+  final GymModel gym;
+  final bool isMyGym;
+  final VoidCallback onClose;
+  final VoidCallback onGoTo;
+  final VoidCallback onSeeGym;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isLoggedIn = ref.watch(currentUserIdProvider) != null;
+    final friendshipsAsync = ref.watch(_myFriendshipsProvider);
+    final kingsAsync = ref.watch(_gymKingsProvider(gym.id));
+    final myId = ref.watch(currentUserIdProvider);
+
+    final friendsHere = (isLoggedIn && myId != null)
+        ? (friendshipsAsync.valueOrNull ?? [])
+            .where((f) => f.status == FriendshipStatus.unlocked && f.homeGymIdForOther(myId) == gym.id)
+            .map((f) => f.pseudoForOther(myId))
+            .toList()
+        : <String>[];
+
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.18),
-        shape: BoxShape.circle,
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.78),
+      decoration: const BoxDecoration(
+        color: _kCard,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(
+          top: BorderSide(color: _kBorder),
+          left: BorderSide(color: _kBorder),
+          right: BorderSide(color: _kBorder),
+        ),
       ),
-      alignment: Alignment.center,
-      child: Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(
-          color: Colors.blue.shade600,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 4),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: _kBorder, borderRadius: BorderRadius.circular(4))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 0),
+              child: Row(
+                children: [
+                  if (isMyGym) ...[
+                    const Icon(Icons.star, color: _kGold, size: 20),
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text(
+                      gym.name,
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(onPressed: onClose, icon: const Icon(Icons.close, color: _kMuted)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // A. Affluence en direct
+                    if (gym.liveAttendanceRate != null) ...[
+                      Builder(builder: (context) {
+                        final level = _levelFor(gym.liveAttendanceRate!);
+                        return Row(
+                          children: [
+                            Text(
+                              '${(gym.liveAttendanceRate! * 100).round()}% d\'affluence',
+                              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(width: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: level.color.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(color: level.color.withOpacity(0.4)),
+                              ),
+                              child: Text(
+                                '${level.emoji} ${level.label}',
+                                style: TextStyle(color: level.color, fontSize: 12, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: gym.liveAttendanceRate,
+                          minHeight: 6,
+                          backgroundColor: _kBorder,
+                          valueColor: AlwaysStoppedAnimation(_levelFor(gym.liveAttendanceRate!).color),
+                        ),
+                      ),
+                    ] else
+                      const Text(
+                        'Affluence non disponible pour cette salle pour le moment.',
+                        style: TextStyle(color: _kMuted, fontSize: 13),
+                      ),
+                    const SizedBox(height: 24),
+
+                    // B. Confidentialité "Mes amis"
+                    if (!isLoggedIn)
+                      const Text(
+                        'Connecte-toi pour voir tes amis qui s\'entraînent ici.',
+                        style: TextStyle(color: _kMuted, fontSize: 13),
+                      )
+                    else ...[
+                      Text(
+                        friendsHere.isEmpty
+                            ? 'Aucun ami ici'
+                            : '${friendsHere.length} ami${friendsHere.length > 1 ? 's' : ''} s\'entraîne${friendsHere.length > 1 ? 'nt' : ''} ici',
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                      if (friendsHere.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 74,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: friendsHere.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 14),
+                            itemBuilder: (context, i) {
+                              final pseudo = friendsHere[i];
+                              final initials = pseudo.length >= 2 ? pseudo.substring(0, 2).toUpperCase() : pseudo.toUpperCase();
+                              return Column(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: _colorForPseudo(pseudo),
+                                    child: Text(
+                                      initials,
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(pseudo, style: const TextStyle(color: _kMuted, fontSize: 11)),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ] else
+                        const Padding(
+                          padding: EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Aucun ami n\'a choisi cette salle comme salle habituelle pour le moment.',
+                            style: TextStyle(color: _kMuted, fontSize: 13),
+                          ),
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+
+                    // C. Record en cours sur une machine de la salle
+                    kingsAsync.when(
+                      loading: () => const SizedBox(
+                        height: 20,
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: _kAccent)),
+                      ),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (kings) {
+                        if (kings.isEmpty) return const SizedBox.shrink();
+                        MachineKingModel? best;
+                        for (final k in kings) {
+                          if (!k.hasKing) continue;
+                          if (best == null || (k.kingWeightKg ?? 0) > (best.kingWeightKg ?? 0)) best = k;
+                        }
+                        if (best == null) {
+                          return const Row(
+                            children: [
+                              Icon(Icons.emoji_events_outlined, color: _kMuted, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Sois le premier à devenir Roi d\'une machine ici 💪',
+                                  style: TextStyle(color: _kMuted, fontSize: 13, height: 1.35),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            const Icon(Icons.emoji_events, color: _kGold, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Roi de ${best.machineName} : ${best.kingPseudo} — ${best.kingWeightKg!.toStringAsFixed(0)} kg',
+                                style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.35),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // D. Boutons d'action fixes
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+              decoration: const BoxDecoration(border: Border(top: BorderSide(color: _kBorder))),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onGoTo,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        side: const BorderSide(color: _kAccent, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Text(
+                        'Y aller (Itinéraire) 🚗',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onSeeGym,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1C1C1E),
+                        side: const BorderSide(color: Color(0xFF2C2C2E)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.fitness_center, size: 14, color: Colors.white),
+                          SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'Voir les machines',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DarkAlertDialog extends StatelessWidget {
+  const _DarkAlertDialog({required this.title, required this.content, required this.confirmLabel});
+
+  final String title;
+  final String content;
+  final String confirmLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: _kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: _kBorder),
+      ),
+      title: Text(title, style: const TextStyle(color: Colors.white)),
+      content: Text(content, style: const TextStyle(color: _kMuted)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Annuler', style: TextStyle(color: _kMuted)),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: _kAccent, foregroundColor: Colors.black),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(confirmLabel),
+        ),
+      ],
     );
   }
 }
@@ -582,16 +1079,32 @@ class _NameGymDialogState extends State<_NameGymDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Nom de la salle'),
+      backgroundColor: _kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: const BorderSide(color: _kBorder),
+      ),
+      title: const Text('Nom de la salle', style: TextStyle(color: Colors.white)),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(hintText: 'ex: Basic-Fit Lorient'),
+        style: const TextStyle(color: Colors.white),
+        cursorColor: _kAccent,
+        decoration: const InputDecoration(
+          hintText: 'ex: Basic-Fit Lorient',
+          hintStyle: TextStyle(color: _kMuted),
+          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: _kBorder)),
+          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: _kAccent)),
+        ),
         onSubmitted: (v) => Navigator.of(context).pop(v),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Annuler')),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler', style: TextStyle(color: _kMuted)),
+        ),
         FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: _kAccent, foregroundColor: Colors.black),
           onPressed: () => Navigator.of(context).pop(_controller.text),
           child: const Text('Ajouter'),
         ),
