@@ -234,6 +234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       togglingExerciseId: _togglingExerciseId,
                       onToggle: (exercise) => _toggleExercise(exercise, doneExerciseIds.contains(exercise.id)),
                       onOpenCalendar: () => context.push('/programs/calendar'),
+                      onCreateNew: () => context.push('/programs/create'),
                     );
                   },
                 ),

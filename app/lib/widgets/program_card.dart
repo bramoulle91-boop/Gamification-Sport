@@ -26,6 +26,7 @@ class ProgramCard extends StatelessWidget {
     required this.doneExerciseIds,
     required this.onToggle,
     required this.onOpenCalendar,
+    required this.onCreateNew,
     this.togglingExerciseId,
     super.key,
   });
@@ -34,6 +35,7 @@ class ProgramCard extends StatelessWidget {
   final Set<String> doneExerciseIds;
   final void Function(ProgramExerciseModel exercise) onToggle;
   final VoidCallback onOpenCalendar;
+  final VoidCallback onCreateNew;
   final String? togglingExerciseId;
 
   @override
@@ -131,10 +133,24 @@ class ProgramCard extends StatelessWidget {
             }),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: OutlinedButton.icon(
-              onPressed: onOpenCalendar,
-              icon: const Icon(Icons.calendar_month),
-              label: const Text('Mon calendrier'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onOpenCalendar,
+                    icon: const Icon(Icons.calendar_month),
+                    label: const Text('Mon calendrier'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onCreateNew,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Nouveau programme'),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
