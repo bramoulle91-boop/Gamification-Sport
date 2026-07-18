@@ -6,11 +6,44 @@ import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
 import '../../widgets/league_badge.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _enablingPush = false;
+
+  Future<void> _enablePush() async {
+    if (ref.read(currentUserIdProvider) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connecte-toi pour activer les notifications.')),
+      );
+      return;
+    }
+    final push = ref.read(pushServiceProvider);
+    if (!push.isSupported) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notifications non supportées sur cet appareil/navigateur.')),
+      );
+      return;
+    }
+    setState(() => _enablingPush = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await push.enable();
+      messenger.showSnackBar(const SnackBar(content: Text('Notifications activées 🔔')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Erreur : $e')));
+    } finally {
+      if (mounted) setState(() => _enablingPush = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final profileAsync = ref.watch(currentProfileProvider);
     final isLoggedIn = ref.watch(currentUserIdProvider) != null;
 
@@ -34,6 +67,21 @@ class ProfileScreen extends ConsumerWidget {
               const SizedBox(height: 12),
               Center(child: LeagueBadge(leagueLevel: profile.leagueLevel)),
               const SizedBox(height: 24),
+              ListTile(
+                leading: _enablingPush
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Padding(
+                          padding: EdgeInsets.all(2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : const Icon(Icons.notifications_active_outlined),
+                title: const Text('Activer les notifications'),
+                subtitle: const Text('Nouveaux messages, défis, résultats — même appli fermée'),
+                onTap: _enablingPush ? null : _enablePush,
+              ),
               ListTile(
                 leading: const Icon(Icons.verified_user),
                 title: const Text('Espace staff'),
