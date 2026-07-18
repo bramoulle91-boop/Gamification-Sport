@@ -93,6 +93,11 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
         title: const Text('Amis'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.bolt),
+            tooltip: 'Défis',
+            onPressed: () => context.push('/duels'),
+          ),
+          IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             tooltip: "Scanner le QR d'un ami",
             onPressed: () => context.push('/validation/scan-friend'),

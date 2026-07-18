@@ -7,6 +7,7 @@ import '../models/program_model.dart';
 import '../models/user_model.dart';
 import 'activity_service.dart';
 import 'auth_service.dart';
+import 'duel_service.dart';
 import 'friendship_service.dart';
 import 'gym_service.dart';
 import 'leaderboard_service.dart';
@@ -20,6 +21,7 @@ import 'supabase_service.dart';
 
 final authServiceProvider = Provider((ref) => AuthService());
 final activityServiceProvider = Provider((ref) => ActivityService());
+final duelServiceProvider = Provider((ref) => DuelService());
 final performanceServiceProvider = Provider((ref) => PerformanceService());
 final friendshipServiceProvider = Provider((ref) => FriendshipService());
 final leaderboardServiceProvider = Provider((ref) => LeaderboardService());
