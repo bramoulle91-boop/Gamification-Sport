@@ -179,10 +179,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     return gymAsync.when(
                       loading: () => const SizedBox.shrink(),
                       error: (_, __) => const SizedBox.shrink(),
-                      data: (gym) => ActionChip(
-                        avatar: const Text('📍'),
-                        label: Text(gym != null ? gym.name : 'Choisir ta salle'),
-                        onPressed: () => context.push('/gyms/map'),
+                      data: (gym) => Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ActionChip(
+                            avatar: const Text('📍'),
+                            label: Text(gym != null ? gym.name : 'Choisir ta salle'),
+                            onPressed: () => context.push('/gyms/map'),
+                          ),
+                          if (gym != null)
+                            ActionChip(
+                              avatar: const Icon(Icons.chat_bubble_outline, size: 16),
+                              label: const Text('Discussion'),
+                              onPressed: () => context.push('/gyms/${gym.id}/chat'),
+                            ),
+                        ],
                       ),
                     );
                   },
