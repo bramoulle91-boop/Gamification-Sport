@@ -8,6 +8,7 @@ import '../screens/auth/reset_password_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/duels/duels_screen.dart';
 import '../screens/friends/friends_screen.dart';
+import '../screens/gyms/gym_chat_screen.dart';
 import '../screens/gyms/gym_detail_screen.dart';
 import '../screens/gyms/gym_map_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -79,6 +80,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/gyms/:gymId',
         builder: (context, state) => GymDetailScreen(gymId: state.pathParameters['gymId']!),
+      ),
+      GoRoute(
+        path: '/gyms/:gymId/chat',
+        builder: (context, state) => GymChatScreen(gymId: state.pathParameters['gymId']!),
       ),
       GoRoute(
         path: '/log-performance/:machineId',

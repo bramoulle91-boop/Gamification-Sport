@@ -81,10 +81,22 @@ class GymDetailScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: isMyGym ? null : () => _chooseGym(context, ref, gym),
-                icon: Icon(isMyGym ? Icons.check_circle : Icons.flag_outlined),
-                label: Text(isMyGym ? "C'est déjà ta salle" : 'Choisir cette salle'),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: isMyGym ? null : () => _chooseGym(context, ref, gym),
+                      icon: Icon(isMyGym ? Icons.check_circle : Icons.flag_outlined),
+                      label: Text(isMyGym ? "C'est déjà ta salle" : 'Choisir cette salle'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push('/gyms/$gymId/chat'),
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    label: const Text('Discussion'),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
               Text('Machines', style: Theme.of(context).textTheme.titleMedium),
