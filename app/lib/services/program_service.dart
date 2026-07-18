@@ -1,0 +1,255 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../models/program_exercise_model.dart';
+import '../models/program_model.dart';
+import 'supabase_service.dart';
+
+/// Brouillon d'exercice saisi par l'utilisateur avant la création du
+/// programme personnalisé (pas encore d'ID, pas encore en base).
+class ProgramExerciseDraft {
+  ProgramExerciseDraft({
+    required this.dayLabel,
+    required this.exerciseName,
+    required this.targetSets,
+    required this.targetReps,
+    this.targetedMuscle,
+    this.targetWeightKg,
+  });
+
+  final String dayLabel;
+  final String exerciseName;
+  final String? targetedMuscle;
+  final int targetSets;
+  final int targetReps;
+  final double? targetWeightKg;
+}
+
+class ProgramService {
+  final SupabaseClient _client = SupabaseService.client;
+
+  Future<ProgramModel> _fetchProgram(String programId) async {
+    final rows = await _client
+        .from('program_exercises')
+        .select()
+        .eq('program_id', programId)
+        .order('order_index');
+    final exercises = (rows as List<dynamic>)
+        .map((e) => ProgramExerciseModel.fromMap(e as Map<String, dynamic>))
+        .toList();
+    final programRow =
+        await _client.from('programs').select().eq('id', programId).single();
+    return ProgramModel(
+      id: programRow['id'] as String,
+      name: programRow['name'] as String,
+      description: programRow['description'] as String?,
+      exercises: exercises,
+    );
+  }
+
+  /// Le programme suivi par l'utilisateur courant, ou `null` s'il n'en a pas
+  /// encore choisi (mode démo compris : aucune session -> null). La séance
+  /// du jour est déterminée par le calendrier hebdomadaire (jour de la
+  /// semaine réel), pas par une rotation figée.
+  Future<UserProgramModel?> fetchMyProgram() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return null;
+
+    final row = await _client
+        .from('user_programs')
+        .select()
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (row == null) return null;
+
+    final program = await _fetchProgram(row['program_id'] as String);
+    final schedule = await fetchMyWeeklySchedule();
+    final weekday = DateTime.now().weekday; // 1 = lundi ... 7 = dimanche (ISO), même convention que le calendrier
+    final todaysDayLabel =
+        schedule.containsKey(weekday) ? schedule[weekday] : row['current_day_label'] as String?;
+    return UserProgramModel(program: program, todaysDayLabel: todaysDayLabel, weeklySchedule: schedule);
+  }
+
+  /// Le calendrier hebdomadaire de l'utilisateur : quelle séance (day_label
+  /// du programme) est prévue chaque jour de la semaine (1=lundi..7=dimanche),
+  /// `null` = repos. Vide si jamais configuré.
+  Future<Map<int, String?>> fetchMyWeeklySchedule() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final rows = await _client
+        .from('program_weekly_schedule')
+        .select('weekday, day_label')
+        .eq('user_id', userId);
+    return {
+      for (final row in rows as List<dynamic>)
+        (row as Map<String, dynamic>)['weekday'] as int: row['day_label'] as String?,
+    };
+  }
+
+  /// Remplace le calendrier hebdomadaire complet (7 entrées, une par jour).
+  Future<void> setWeeklySchedule(Map<int, String?> schedule) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour modifier ton calendrier.');
+    }
+    await _client.from('program_weekly_schedule').upsert([
+      for (final entry in schedule.entries)
+        {'user_id': userId, 'weekday': entry.key, 'day_label': entry.value},
+    ], onConflict: 'user_id,weekday');
+  }
+
+  /// Les dates où l'utilisateur a validé au moins un exercice — pour
+  /// afficher les jours "streak" sur le calendrier.
+  Future<Set<DateTime>> fetchCompletionDates() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final rows = await _client
+        .from('program_exercise_completions')
+        .select('completed_on')
+        .eq('user_id', userId);
+    return (rows as List<dynamic>)
+        .map((e) => DateTime.parse((e as Map<String, dynamic>)['completed_on'] as String))
+        .toSet();
+  }
+
+  /// Répartit automatiquement les séances du programme sur des jours de
+  /// semaine espacés (ex: lundi/mercredi/vendredi pour 3 séances) —
+  /// entièrement modifiable ensuite depuis le calendrier.
+  Future<void> _seedDefaultSchedule(ProgramModel program) async {
+    final days = program.dayLabels;
+    final schedule = <int, String?>{for (var w = 1; w <= 7; w++) w: null};
+    if (days.isNotEmpty) {
+      final step = (7 ~/ days.length).clamp(1, 7);
+      for (var i = 0; i < days.length; i++) {
+        schedule[1 + (i * step) % 7] = days[i];
+      }
+    }
+    await setWeeklySchedule(schedule);
+  }
+
+  /// Le programme de démonstration proposé aux nouveaux utilisateurs.
+  Future<ProgramModel> fetchDiscoveryProgram() {
+    return _fetchProgram('00000000-0000-4000-8000-000000000001');
+  }
+
+  /// Les programmes personnalisés déjà créés par l'utilisateur courant,
+  /// pour pouvoir en reprendre un sans le recréer.
+  Future<List<ProgramModel>> fetchMyCustomPrograms() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return [];
+    final rows = await _client.from('programs').select().eq('created_by', userId);
+    final programs = <ProgramModel>[];
+    for (final row in rows as List<dynamic>) {
+      programs.add(await _fetchProgram((row as Map<String, dynamic>)['id'] as String));
+    }
+    return programs;
+  }
+
+  Future<ProgramModel> createCustomProgram({
+    required String name,
+    required List<ProgramExerciseDraft> exercises,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour créer un programme.');
+    }
+    if (exercises.isEmpty) {
+      throw Exception('Ajoute au moins un exercice.');
+    }
+
+    final programRow = await _client
+        .from('programs')
+        .insert({'name': name, 'created_by': userId})
+        .select()
+        .single();
+    final programId = programRow['id'] as String;
+
+    await _client.from('program_exercises').insert([
+      for (var i = 0; i < exercises.length; i++)
+        {
+          'program_id': programId,
+          'day_label': exercises[i].dayLabel,
+          'order_index': i,
+          'exercise_name': exercises[i].exerciseName,
+          'targeted_muscle': exercises[i].targetedMuscle,
+          'target_sets': exercises[i].targetSets,
+          'target_reps': exercises[i].targetReps,
+          'target_weight_kg': exercises[i].targetWeightKg,
+        },
+    ]);
+
+    return _fetchProgram(programId);
+  }
+
+  /// Démarre (ou change pour) ce programme — remplace le programme suivi
+  /// actuel s'il y en avait déjà un, et répartit ses séances sur un
+  /// calendrier hebdomadaire par défaut (modifiable ensuite librement).
+  Future<void> enroll(ProgramModel program) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour démarrer un programme.');
+    }
+    await _client.from('user_programs').upsert({
+      'user_id': userId,
+      'program_id': program.id,
+      'current_day_label': program.dayLabels.first,
+    });
+    await _seedDefaultSchedule(program);
+  }
+
+  /// Les exercices déjà cochés aujourd'hui par l'utilisateur courant, pour
+  /// que les cases à cocher de la séance survivent à un rechargement.
+  Future<Set<String>> fetchTodaysCompletions() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final today = DateTime.now().toUtc().toIso8601String().split('T').first;
+    final rows = await _client
+        .from('program_exercise_completions')
+        .select('program_exercise_id')
+        .eq('user_id', userId)
+        .eq('completed_on', today);
+    return (rows as List<dynamic>)
+        .map((e) => (e as Map<String, dynamic>)['program_exercise_id'] as String)
+        .toSet();
+  }
+
+  /// Coche un exercice de la séance du jour avec le poids/les reps
+  /// réellement faits — validé par géolocalisation côté serveur (comme le
+  /// niveau 1), attribue des points, détecte un nouveau record personnel
+  /// sur cet exercice, et déclenche un check-in visible par les amis si
+  /// c'est la première validation du jour dans cette salle. En attendant
+  /// que toutes les machines aient un QR code, c'est ce geste qui sert de
+  /// preuve de présence ET de performance.
+  ///
+  /// Renvoie `true` si c'est un nouveau record personnel sur cet exercice.
+  Future<bool> completeExercise({
+    required String programExerciseId,
+    required String gymId,
+    required double lat,
+    required double lon,
+    double? weightKg,
+    int? reps,
+  }) async {
+    final row = await _client.rpc('complete_program_exercise', params: {
+      'p_program_exercise_id': programExerciseId,
+      'p_gym_id': gymId,
+      'p_user_lat': lat,
+      'p_user_lon': lon,
+      'p_weight_kg': weightKg,
+      'p_reps': reps,
+    });
+    return (row as Map<String, dynamic>)['is_record'] as bool? ?? false;
+  }
+
+  /// Décoche un exercice précédemment validé aujourd'hui.
+  Future<void> uncompleteExercise(String programExerciseId) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    final today = DateTime.now().toUtc().toIso8601String().split('T').first;
+    await _client
+        .from('program_exercise_completions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('program_exercise_id', programExerciseId)
+        .eq('completed_on', today);
+  }
+}

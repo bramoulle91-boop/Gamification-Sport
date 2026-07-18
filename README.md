@@ -4,12 +4,13 @@ GymQuest est une application de gamification de la pratique sportive en salle : 
 
 Ce dépôt contient la documentation d'architecture du produit ainsi que le schéma de base de données de référence (Supabase/PostgreSQL).
 
-## Documentation
+## Contenu du dépôt
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : système de validation progressif des performances, modèle de données conceptuel, et plan de déploiement terrain.
-- [`supabase/schema.sql`](supabase/schema.sql) : script SQL créant les tables du modèle de données (`Users`, `Gyms`, `Machines`, `Friendships`, `Performances`).
+- [`app/`](app) : application mobile Flutter (auth, scan de machine, les 3 niveaux de validation, classement, amis, boutique de récompenses). Voir [`app/README.md`](app/README.md) pour l'installation.
+- [`supabase/migrations/`](supabase/migrations) : schéma Supabase/PostgreSQL (tables, RLS, fonctions RPC de validation).
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : système de validation progressif, modèle de données conceptuel, plan de déploiement terrain.
 
-## Stack technique envisagée
+## Stack technique
 
-- **Application mobile** : FlutterFlow (no-code)
-- **Backend / base de données** : Supabase (PostgreSQL)
+- **Application mobile** : Flutter
+- **Backend / base de données** : Supabase (PostgreSQL, Auth, Storage)
