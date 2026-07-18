@@ -13,6 +13,7 @@ import '../screens/machines/log_performance_screen.dart';
 import '../screens/machines/machine_scan_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/programs/create_program_screen.dart';
+import '../screens/programs/program_calendar_screen.dart';
 import '../screens/rewards/rewards_shop_screen.dart';
 import '../screens/validation/camera_proof_screen.dart';
 import '../screens/validation/friend_qr_scan_screen.dart';
@@ -58,6 +59,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/scan', builder: (context, state) => const MachineScanScreen()),
       GoRoute(path: '/programs/create', builder: (context, state) => const CreateProgramScreen()),
+      GoRoute(path: '/programs/calendar', builder: (context, state) => const ProgramCalendarScreen()),
       GoRoute(path: '/gyms/map', builder: (context, state) => const GymMapScreen()),
       GoRoute(
         path: '/gyms/:gymId',

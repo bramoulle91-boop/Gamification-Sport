@@ -56,8 +56,9 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen> {
       await programService.enroll(program);
       ref.invalidate(myProgramProvider);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Programme créé 💪')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Programme créé 💪 — modifie ton calendrier depuis l\'accueil si besoin')),
+        );
         context.go('/home');
       }
     } catch (e) {

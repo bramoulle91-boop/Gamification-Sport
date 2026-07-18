@@ -47,7 +47,9 @@ class ProgramService {
   }
 
   /// Le programme suivi par l'utilisateur courant, ou `null` s'il n'en a pas
-  /// encore choisi (mode démo compris : aucune session -> null).
+  /// encore choisi (mode démo compris : aucune session -> null). La séance
+  /// du jour est déterminée par le calendrier hebdomadaire (jour de la
+  /// semaine réel), pas par une rotation figée.
   Future<UserProgramModel?> fetchMyProgram() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return null;
@@ -60,7 +62,68 @@ class ProgramService {
     if (row == null) return null;
 
     final program = await _fetchProgram(row['program_id'] as String);
-    return UserProgramModel(program: program, currentDayLabel: row['current_day_label'] as String);
+    final schedule = await fetchMyWeeklySchedule();
+    final weekday = DateTime.now().weekday; // 1 = lundi ... 7 = dimanche (ISO), même convention que le calendrier
+    final todaysDayLabel =
+        schedule.containsKey(weekday) ? schedule[weekday] : row['current_day_label'] as String?;
+    return UserProgramModel(program: program, todaysDayLabel: todaysDayLabel, weeklySchedule: schedule);
+  }
+
+  /// Le calendrier hebdomadaire de l'utilisateur : quelle séance (day_label
+  /// du programme) est prévue chaque jour de la semaine (1=lundi..7=dimanche),
+  /// `null` = repos. Vide si jamais configuré.
+  Future<Map<int, String?>> fetchMyWeeklySchedule() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final rows = await _client
+        .from('program_weekly_schedule')
+        .select('weekday, day_label')
+        .eq('user_id', userId);
+    return {
+      for (final row in rows as List<dynamic>)
+        (row as Map<String, dynamic>)['weekday'] as int: row['day_label'] as String?,
+    };
+  }
+
+  /// Remplace le calendrier hebdomadaire complet (7 entrées, une par jour).
+  Future<void> setWeeklySchedule(Map<int, String?> schedule) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('Connecte-toi pour modifier ton calendrier.');
+    }
+    await _client.from('program_weekly_schedule').upsert([
+      for (final entry in schedule.entries)
+        {'user_id': userId, 'weekday': entry.key, 'day_label': entry.value},
+    ], onConflict: 'user_id,weekday');
+  }
+
+  /// Les dates où l'utilisateur a validé au moins un exercice — pour
+  /// afficher les jours "streak" sur le calendrier.
+  Future<Set<DateTime>> fetchCompletionDates() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return {};
+    final rows = await _client
+        .from('program_exercise_completions')
+        .select('completed_on')
+        .eq('user_id', userId);
+    return (rows as List<dynamic>)
+        .map((e) => DateTime.parse((e as Map<String, dynamic>)['completed_on'] as String))
+        .toSet();
+  }
+
+  /// Répartit automatiquement les séances du programme sur des jours de
+  /// semaine espacés (ex: lundi/mercredi/vendredi pour 3 séances) —
+  /// entièrement modifiable ensuite depuis le calendrier.
+  Future<void> _seedDefaultSchedule(ProgramModel program) async {
+    final days = program.dayLabels;
+    final schedule = <int, String?>{for (var w = 1; w <= 7; w++) w: null};
+    if (days.isNotEmpty) {
+      final step = (7 ~/ days.length).clamp(1, 7);
+      for (var i = 0; i < days.length; i++) {
+        schedule[1 + (i * step) % 7] = days[i];
+      }
+    }
+    await setWeeklySchedule(schedule);
   }
 
   /// Le programme de démonstration proposé aux nouveaux utilisateurs.
@@ -118,7 +181,8 @@ class ProgramService {
   }
 
   /// Démarre (ou change pour) ce programme — remplace le programme suivi
-  /// actuel s'il y en avait déjà un.
+  /// actuel s'il y en avait déjà un, et répartit ses séances sur un
+  /// calendrier hebdomadaire par défaut (modifiable ensuite librement).
   Future<void> enroll(ProgramModel program) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) {
@@ -129,14 +193,7 @@ class ProgramService {
       'program_id': program.id,
       'current_day_label': program.dayLabels.first,
     });
-  }
-
-  Future<UserProgramModel> advanceToNextDay(ProgramModel program) async {
-    final row = await _client.rpc('advance_program_day');
-    return UserProgramModel(
-      program: program,
-      currentDayLabel: (row as Map<String, dynamic>)['current_day_label'] as String,
-    );
+    await _seedDefaultSchedule(program);
   }
 
   /// Les exercices déjà cochés aujourd'hui par l'utilisateur courant, pour

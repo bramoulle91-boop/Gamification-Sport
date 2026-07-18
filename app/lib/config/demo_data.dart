@@ -15,7 +15,8 @@ final demoProfile = UserModel(
 
 /// Programme affiché en aperçu quand personne n'est connecté.
 final demoUserProgram = UserProgramModel(
-  currentDayLabel: 'Jour 1 — Push',
+  todaysDayLabel: 'Jour 1 — Push',
+  weeklySchedule: const {1: 'Jour 1 — Push', 3: 'Jour 2 — Pull', 5: 'Jour 3 — Legs'},
   program: ProgramModel(
     id: 'demo-program',
     name: 'Programme Découverte',

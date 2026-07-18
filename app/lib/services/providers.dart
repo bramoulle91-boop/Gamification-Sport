@@ -72,3 +72,11 @@ final myTodaysCompletionsProvider = FutureProvider<Set<String>>((ref) async {
   if (userId == null) return {};
   return ref.watch(programServiceProvider).fetchTodaysCompletions();
 });
+
+/// Les dates où l'utilisateur a validé au moins un exercice, pour les
+/// jours "streak" du calendrier.
+final myCompletionDatesProvider = FutureProvider<Set<DateTime>>((ref) async {
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) return {};
+  return ref.watch(programServiceProvider).fetchCompletionDates();
+});

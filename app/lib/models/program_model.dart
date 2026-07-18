@@ -32,11 +32,23 @@ class ProgramModel {
 class UserProgramModel {
   UserProgramModel({
     required this.program,
-    required this.currentDayLabel,
+    required this.todaysDayLabel,
+    required this.weeklySchedule,
   });
 
   final ProgramModel program;
-  final String currentDayLabel;
 
-  List<ProgramExerciseModel> get todaysExercises => program.exercisesForDay(currentDayLabel);
+  /// La séance prévue aujourd'hui d'après le calendrier hebdomadaire, ou
+  /// `null` si c'est un jour de repos (ou si le calendrier n'est pas encore
+  /// configuré et qu'aucun repli n'a été trouvé).
+  final String? todaysDayLabel;
+
+  /// Le calendrier hebdomadaire complet : jour ISO (1=lundi..7=dimanche) ->
+  /// day_label du programme, ou `null` pour repos.
+  final Map<int, String?> weeklySchedule;
+
+  bool get isRestDayToday => todaysDayLabel == null;
+
+  List<ProgramExerciseModel> get todaysExercises =>
+      todaysDayLabel == null ? const [] : program.exercisesForDay(todaysDayLabel!);
 }

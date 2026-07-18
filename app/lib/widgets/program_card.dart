@@ -12,7 +12,7 @@ class ProgramCard extends StatelessWidget {
     required this.userProgram,
     required this.doneExerciseIds,
     required this.onToggle,
-    required this.onNextDay,
+    required this.onOpenCalendar,
     this.togglingExerciseId,
     super.key,
   });
@@ -20,7 +20,7 @@ class ProgramCard extends StatelessWidget {
   final UserProgramModel userProgram;
   final Set<String> doneExerciseIds;
   final void Function(ProgramExerciseModel exercise) onToggle;
-  final VoidCallback onNextDay;
+  final VoidCallback onOpenCalendar;
   final String? togglingExerciseId;
 
   @override
@@ -28,6 +28,7 @@ class ProgramCard extends StatelessWidget {
     final exercises = userProgram.todaysExercises;
     final doneCount = exercises.where((e) => doneExerciseIds.contains(e.id)).length;
     final scheme = Theme.of(context).colorScheme;
+    final isRestDay = userProgram.isRestDayToday;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -40,14 +41,14 @@ class ProgramCard extends StatelessWidget {
             color: scheme.primaryContainer,
             child: Row(
               children: [
-                Icon(Icons.fitness_center, color: scheme.onPrimaryContainer),
+                Icon(isRestDay ? Icons.self_improvement : Icons.fitness_center, color: scheme.onPrimaryContainer),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        userProgram.currentDayLabel,
+                        userProgram.todaysDayLabel ?? 'Jour de repos',
                         style: TextStyle(
                           color: scheme.onPrimaryContainer,
                           fontWeight: FontWeight.w700,
@@ -61,49 +62,56 @@ class ProgramCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Text(
-                  '$doneCount/${exercises.length}',
-                  style: TextStyle(
-                    color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
+                if (!isRestDay)
+                  Text(
+                    '$doneCount/${exercises.length}',
+                    style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
-          ...exercises.map((exercise) {
-            final done = doneExerciseIds.contains(exercise.id);
-            final toggling = togglingExerciseId == exercise.id;
-            return ListTile(
-              leading: toggling
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: Padding(
-                        padding: EdgeInsets.all(2),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  : Checkbox(value: done, onChanged: (_) => onToggle(exercise)),
-              title: Text(
-                exercise.exerciseName,
-                style: done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
-              ),
-              subtitle: Text(_exerciseSubtitle(exercise)),
-              trailing: IconButton(
-                icon: const Icon(Icons.qr_code_scanner),
-                tooltip: 'Scanner la machine pour cet exercice',
-                onPressed: () => context.push('/scan'),
-              ),
-            );
-          }),
+          if (isRestDay)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text("Rien de prévu aujourd'hui d'après ton calendrier — profite du repos 🧘"),
+            )
+          else
+            ...exercises.map((exercise) {
+              final done = doneExerciseIds.contains(exercise.id);
+              final toggling = togglingExerciseId == exercise.id;
+              return ListTile(
+                leading: toggling
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Padding(
+                          padding: EdgeInsets.all(2),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Checkbox(value: done, onChanged: (_) => onToggle(exercise)),
+                title: Text(
+                  exercise.exerciseName,
+                  style: done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
+                ),
+                subtitle: Text(_exerciseSubtitle(exercise)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.qr_code_scanner),
+                  tooltip: 'Scanner la machine pour cet exercice',
+                  onPressed: () => context.push('/scan'),
+                ),
+              );
+            }),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
             child: OutlinedButton.icon(
-              onPressed: onNextDay,
-              icon: const Icon(Icons.skip_next),
-              label: const Text('Séance suivante'),
+              onPressed: onOpenCalendar,
+              icon: const Icon(Icons.calendar_month),
+              label: const Text('Mon calendrier'),
             ),
           ),
         ],

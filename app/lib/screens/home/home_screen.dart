@@ -11,6 +11,24 @@ import '../../widgets/program_card.dart';
 import '../../widgets/stat_tile.dart';
 import '../../widgets/streak_row.dart';
 
+/// Nombre de jours consécutifs (jusqu'à aujourd'hui ou hier) où l'utilisateur
+/// a validé au moins un exercice — le streak n'est pas encore cassé tant
+/// qu'il peut encore agir aujourd'hui.
+int _currentStreak(Set<DateTime> completionDates) {
+  final normalized = completionDates.map((d) => DateTime(d.year, d.month, d.day)).toSet();
+  var cursor = DateTime.now();
+  cursor = DateTime(cursor.year, cursor.month, cursor.day);
+  if (!normalized.contains(cursor)) {
+    cursor = cursor.subtract(const Duration(days: 1));
+  }
+  var streak = 0;
+  while (normalized.contains(cursor)) {
+    streak++;
+    cursor = cursor.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -130,11 +148,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Erreur : $err')),
         data: (profile) {
-          final streakCount = profile.streakHistory.length;
+          final completionDates = ref.watch(myCompletionDatesProvider).valueOrNull;
+          final streakCount = isLoggedIn
+              ? (completionDates != null ? _currentStreak(completionDates) : 0)
+              : profile.streakHistory.length;
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(currentProfileProvider);
               ref.invalidate(myProgramProvider);
+              ref.invalidate(myCompletionDatesProvider);
             },
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -211,23 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       doneExerciseIds: doneExerciseIds,
                       togglingExerciseId: _togglingExerciseId,
                       onToggle: (exercise) => _toggleExercise(exercise, doneExerciseIds.contains(exercise.id)),
-                      onNextDay: () async {
-                        if (!isLoggedIn) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Connecte-toi pour suivre ta progression.')),
-                          );
-                          return;
-                        }
-                        final messenger = ScaffoldMessenger.of(context);
-                        try {
-                          await ref.read(programServiceProvider).advanceToNextDay(userProgram.program);
-                          ref.invalidate(myProgramProvider);
-                        } catch (e) {
-                          if (mounted) {
-                            messenger.showSnackBar(SnackBar(content: Text('Erreur : $e')));
-                          }
-                        }
-                      },
+                      onOpenCalendar: () => context.push('/programs/calendar'),
                     );
                   },
                 ),
