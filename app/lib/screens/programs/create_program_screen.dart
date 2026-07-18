@@ -1,13 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/exercise_catalog.dart';
 import '../../services/program_service.dart';
 import '../../services/providers.dart';
 
+Uri _techniqueSearchUri(String exerciseName) => Uri.parse(
+      'https://www.youtube.com/results?search_query=${Uri.encodeComponent('$exerciseName technique musculation')}',
+    );
+
+Future<void> _openTechnique(BuildContext context, String exerciseName) async {
+  final launched = await launchUrl(_techniqueSearchUri(exerciseName), mode: LaunchMode.externalApplication);
+  if (!launched && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Impossible d'ouvrir la vidéo.")),
+    );
+  }
+}
+
 /// Formulaire de création d'un programme sur-mesure : l'utilisateur nomme
-/// son programme puis ajoute ses propres exercices, groupés par jour, plutôt
-/// que de suivre le Programme Découverte imposé.
+/// son programme puis ajoute ses exercices, groupés par jour, en piochant
+/// dans un catalogue par groupe musculaire (ou en tapant un nom libre —
+/// le programme reste entièrement personnalisable), plutôt que de suivre
+/// le Programme Découverte imposé.
 class CreateProgramScreen extends ConsumerStatefulWidget {
   const CreateProgramScreen({super.key});
 
@@ -117,15 +134,26 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen> {
                             child: Text(entry.key, style: Theme.of(context).textTheme.titleMedium),
                           ),
                           ...entry.value.map((exercise) => ListTile(
+                                leading: Icon(iconForMuscleGroup(exercise.targetedMuscle)),
                                 title: Text(exercise.exerciseName),
                                 subtitle: Text(
                                   '${exercise.targetedMuscle ?? ''}${exercise.targetedMuscle != null ? ' · ' : ''}'
                                   '${exercise.targetSets} × ${exercise.targetReps}'
                                   '${(exercise.targetWeightKg ?? 0) > 0 ? ' × ${exercise.targetWeightKg!.toStringAsFixed(0)}kg' : ''}',
                                 ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: () => setState(() => _exercises.remove(exercise)),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.play_circle_outline),
+                                      tooltip: 'Voir la technique',
+                                      onPressed: () => _openTechnique(context, exercise.exerciseName),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () => setState(() => _exercises.remove(exercise)),
+                                    ),
+                                  ],
                                 ),
                               )),
                         ],
@@ -170,18 +198,38 @@ class _AddExerciseSheet extends StatefulWidget {
 class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   final _formKey = GlobalKey<FormState>();
   late final _dayController = TextEditingController(text: widget.defaultDayLabel);
-  final _nameController = TextEditingController();
   final _muscleController = TextEditingController();
   final _setsController = TextEditingController(text: '3');
   final _repsController = TextEditingController(text: '10');
   final _weightController = TextEditingController();
+  TextEditingController? _nameFieldController;
+  String _muscleFilter = 'Tous';
+  String? _pickedName;
+
+  void _applyCatalogEntry(ExerciseCatalogEntry entry) {
+    setState(() {
+      _pickedName = entry.name;
+      _muscleController.text = entry.muscleGroup;
+      _setsController.text = '${entry.defaultSets}';
+      _repsController.text = '${entry.defaultReps}';
+    });
+    _nameFieldController?.text = entry.name;
+  }
 
   void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+    final exerciseName = (_nameFieldController?.text ?? _pickedName ?? '').trim();
+    if (!_formKey.currentState!.validate() || exerciseName.isEmpty) {
+      if (exerciseName.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Choisis ou tape un exercice.')),
+        );
+      }
+      return;
+    }
     Navigator.of(context).pop(
       ProgramExerciseDraft(
         dayLabel: _dayController.text.trim(),
-        exerciseName: _nameController.text.trim(),
+        exerciseName: exerciseName,
         targetedMuscle: _muscleController.text.trim().isEmpty ? null : _muscleController.text.trim(),
         targetSets: int.parse(_setsController.text),
         targetReps: int.parse(_repsController.text),
@@ -212,11 +260,80 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
               decoration: const InputDecoration(labelText: 'Jour (ex: Jour 1 — Push)'),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
             ),
+            const SizedBox(height: 12),
+            const Text('Groupe musculaire', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 36,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: ['Tous', ...muscleGroups].map((g) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(g, style: const TextStyle(fontSize: 12)),
+                      selected: _muscleFilter == g,
+                      onSelected: (_) => setState(() => _muscleFilter = g),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
             const SizedBox(height: 8),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(labelText: 'Exercice (ex: Développé couché)'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
+            Autocomplete<ExerciseCatalogEntry>(
+              displayStringForOption: (e) => e.name,
+              optionsBuilder: (textEditingValue) {
+                final query = textEditingValue.text.toLowerCase();
+                return exerciseCatalog.where((e) {
+                  final matchesGroup = _muscleFilter == 'Tous' || e.muscleGroup == _muscleFilter;
+                  final matchesQuery = query.isEmpty || e.name.toLowerCase().contains(query);
+                  return matchesGroup && matchesQuery;
+                });
+              },
+              onSelected: _applyCatalogEntry,
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                _nameFieldController = controller;
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Exercice (choisis dans la liste ou tape le tien)',
+                  ),
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                final list = options.toList();
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width - 64,
+                      height: list.length > 4 ? 220 : list.length * 56.0,
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: list.length,
+                        itemBuilder: (context, index) {
+                          final entry = list[index];
+                          return ListTile(
+                            dense: true,
+                            leading: Icon(iconForMuscleGroup(entry.muscleGroup)),
+                            title: Text(entry.name),
+                            subtitle: Text(entry.muscleGroup, style: const TextStyle(fontSize: 11)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.play_circle_outline, size: 20),
+                              tooltip: 'Voir la technique',
+                              onPressed: () => _openTechnique(context, entry.name),
+                            ),
+                            onTap: () => onSelected(entry),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 8),
             TextFormField(
