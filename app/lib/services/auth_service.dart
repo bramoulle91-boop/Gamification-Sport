@@ -34,6 +34,36 @@ class AuthService {
     await _client.auth.signInWithPassword(email: email, password: password);
   }
 
+  /// Se connecter avec le pseudo OU l'email — si ce n'est pas une adresse
+  /// email, on retrouve l'email correspondant au pseudo avant de tenter la
+  /// connexion (les pseudos sont uniques, voir migration 0001).
+  Future<void> signInWithIdentifier({required String identifier, required String password}) async {
+    final email = await _resolveEmail(identifier.trim());
+    await signIn(email: email, password: password);
+  }
+
+  Future<String> _resolveEmail(String identifier) async {
+    if (identifier.contains('@')) return identifier;
+    final row = await _client.from('users').select('email').ilike('pseudo', identifier).maybeSingle();
+    if (row == null) {
+      throw const AuthException('Aucun compte avec ce pseudo.');
+    }
+    return row['email'] as String;
+  }
+
+  /// Envoie un email de réinitialisation de mot de passe. `redirectTo` doit
+  /// pointer vers l'app déployée pour que le lien ramène bien ici.
+  Future<void> sendPasswordResetEmail(String email, {required String redirectTo}) {
+    return _client.auth.resetPasswordForEmail(email.trim(), redirectTo: redirectTo);
+  }
+
+  /// Définit un nouveau mot de passe — appelé après avoir cliqué le lien
+  /// reçu par email (la session de récupération est déjà active à ce
+  /// moment-là, détectée automatiquement par le SDK Supabase).
+  Future<void> updatePassword(String newPassword) {
+    return _client.auth.updateUser(UserAttributes(password: newPassword));
+  }
+
   Future<void> signOut() => _client.auth.signOut();
 
   Future<UserModel> fetchProfile(String userId) async {

@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../screens/auth/forgot_password_screen.dart';
 import '../screens/auth/login_screen.dart';
+import '../screens/auth/reset_password_screen.dart';
 import '../screens/auth/signup_screen.dart';
 import '../screens/duels/duels_screen.dart';
 import '../screens/friends/friends_screen.dart';
@@ -31,6 +34,7 @@ int _repsParam(GoRouterState state) => int.tryParse(state.uri.queryParameters['r
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(currentUserIdProvider);
+  final authEvent = ref.watch(authStateProvider).valueOrNull?.event;
 
   return GoRouter(
     initialLocation: '/home',
@@ -39,15 +43,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     // currentProfileProvider). On évite juste de montrer /login ou /signup
     // à quelqu'un déjà connecté.
     redirect: (context, state) {
+      // Lien de réinitialisation de mot de passe cliqué : le SDK Supabase
+      // détecte la session de récupération toute seule, on force juste
+      // l'écran adapté plutôt que de laisser l'utilisateur atterrir ailleurs.
+      if (authEvent == AuthChangeEvent.passwordRecovery && state.matchedLocation != '/reset-password') {
+        return '/reset-password';
+      }
       final loggedIn = authState != null;
-      final loggingInRoute =
-          state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+      final loggingInRoute = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/signup' ||
+          state.matchedLocation == '/forgot-password';
       if (loggedIn && loggingInRoute) return '/home';
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
+      GoRoute(path: '/forgot-password', builder: (context, state) => const ForgotPasswordScreen()),
+      GoRoute(path: '/reset-password', builder: (context, state) => const ResetPasswordScreen()),
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
         routes: [

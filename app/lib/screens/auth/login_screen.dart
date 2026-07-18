@@ -13,7 +13,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _loading = false;
   String? _error;
@@ -25,8 +25,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       _error = null;
     });
     try {
-      await ref.read(authServiceProvider).signIn(
-            email: _emailController.text.trim(),
+      await ref.read(authServiceProvider).signInWithIdentifier(
+            identifier: _identifierController.text.trim(),
             password: _passwordController.text,
           );
       if (mounted) context.go('/home');
@@ -55,10 +55,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const Text('Gamifie tes séances de sport', textAlign: TextAlign.center),
                   const SizedBox(height: 32),
                   TextFormField(
-                    controller: _emailController,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (v) => (v == null || !v.contains('@')) ? 'Email invalide' : null,
+                    controller: _identifierController,
+                    decoration: const InputDecoration(labelText: 'Pseudo ou email'),
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Requis' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -67,11 +66,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     obscureText: true,
                     validator: (v) => (v == null || v.length < 6) ? '6 caractères minimum' : null,
                   ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => context.push('/forgot-password'),
+                      child: const Text('Mot de passe oublié ?'),
+                    ),
+                  ),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 4),
                     Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   FilledButton(
                     onPressed: _loading ? null : _submit,
                     child: _loading

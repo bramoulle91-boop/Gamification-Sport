@@ -42,7 +42,14 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Créer un compte')),
+      appBar: AppBar(
+        title: const Text('Créer un compte'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Retour à la connexion',
+          onPressed: () => context.go('/login'),
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -82,6 +89,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     child: _loading
                         ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text("S'inscrire"),
+                  ),
+                  TextButton(
+                    onPressed: () => context.go('/login'),
+                    child: const Text('Déjà un compte ? Se connecter'),
                   ),
                 ],
               ),
