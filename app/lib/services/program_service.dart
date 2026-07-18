@@ -155,23 +155,32 @@ class ProgramService {
         .toSet();
   }
 
-  /// Coche un exercice de la séance du jour — validé par géolocalisation
-  /// côté serveur (comme le niveau 1), et déclenche un check-in visible par
-  /// les amis si c'est la première validation du jour dans cette salle. En
-  /// attendant que toutes les machines aient un QR code, c'est ce geste qui
-  /// sert de preuve de présence.
-  Future<void> completeExercise({
+  /// Coche un exercice de la séance du jour avec le poids/les reps
+  /// réellement faits — validé par géolocalisation côté serveur (comme le
+  /// niveau 1), attribue des points, détecte un nouveau record personnel
+  /// sur cet exercice, et déclenche un check-in visible par les amis si
+  /// c'est la première validation du jour dans cette salle. En attendant
+  /// que toutes les machines aient un QR code, c'est ce geste qui sert de
+  /// preuve de présence ET de performance.
+  ///
+  /// Renvoie `true` si c'est un nouveau record personnel sur cet exercice.
+  Future<bool> completeExercise({
     required String programExerciseId,
     required String gymId,
     required double lat,
     required double lon,
+    double? weightKg,
+    int? reps,
   }) async {
-    await _client.rpc('complete_program_exercise', params: {
+    final row = await _client.rpc('complete_program_exercise', params: {
       'p_program_exercise_id': programExerciseId,
       'p_gym_id': gymId,
       'p_user_lat': lat,
       'p_user_lon': lon,
+      'p_weight_kg': weightKg,
+      'p_reps': reps,
     });
+    return (row as Map<String, dynamic>)['is_record'] as bool? ?? false;
   }
 
   /// Décoche un exercice précédemment validé aujourd'hui.

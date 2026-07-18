@@ -19,7 +19,7 @@ class ProgramCard extends StatelessWidget {
 
   final UserProgramModel userProgram;
   final Set<String> doneExerciseIds;
-  final void Function(String exerciseId) onToggle;
+  final void Function(ProgramExerciseModel exercise) onToggle;
   final VoidCallback onNextDay;
   final String? togglingExerciseId;
 
@@ -85,7 +85,7 @@ class ProgramCard extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),
                     )
-                  : Checkbox(value: done, onChanged: (_) => onToggle(exercise.id)),
+                  : Checkbox(value: done, onChanged: (_) => onToggle(exercise)),
               title: Text(
                 exercise.exerciseName,
                 style: done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,

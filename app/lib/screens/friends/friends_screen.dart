@@ -142,14 +142,24 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    activity.type == FriendActivityType.checkin
-                                        ? Icons.location_on
-                                        : Icons.check_circle,
+                                    activity.isRecord
+                                        ? Icons.emoji_events
+                                        : activity.type == FriendActivityType.checkin
+                                            ? Icons.location_on
+                                            : Icons.check_circle,
                                     size: 16,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: activity.isRecord ? Colors.amber.shade700 : Theme.of(context).colorScheme.primary,
                                   ),
                                   const SizedBox(width: 6),
-                                  Expanded(child: Text(activity.message, style: const TextStyle(fontSize: 13))),
+                                  Expanded(
+                                    child: Text(
+                                      activity.message,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: activity.isRecord ? FontWeight.w700 : null,
+                                      ),
+                                    ),
+                                  ),
                                   Text(
                                     _timeAgo(activity.at),
                                     style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.outline),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/program_exercise_model.dart';
 import '../../services/geolocation_service.dart';
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
@@ -21,11 +22,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _enrolling = false;
   String? _togglingExerciseId;
 
-  /// Coche ou décoche un exercice de la séance du jour. Cocher valide la
-  /// géolocalisation côté serveur contre la salle habituelle (en attendant
-  /// que toutes les machines aient un QR code) et déclenche un check-in
-  /// visible par les amis ; décocher est libre.
-  Future<void> _toggleExercise(String exerciseId, bool currentlyDone) async {
+  /// Coche ou décoche un exercice de la séance du jour. Cocher demande le
+  /// poids/les reps réellement faits, valide la géolocalisation côté
+  /// serveur contre la salle habituelle (en attendant que toutes les
+  /// machines aient un QR code), attribue des points, détecte un record
+  /// personnel et déclenche un check-in — le tout visible par les amis.
+  /// Décocher est libre.
+  Future<void> _toggleExercise(ProgramExerciseModel exercise, bool currentlyDone) async {
     final messenger = ScaffoldMessenger.of(context);
     if (ref.read(currentUserIdProvider) == null) {
       messenger.showSnackBar(
@@ -33,27 +36,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
       return;
     }
-    setState(() => _togglingExerciseId = exerciseId);
-    try {
-      if (currentlyDone) {
-        await ref.read(programServiceProvider).uncompleteExercise(exerciseId);
-      } else {
-        final gym = ref.read(myGymProvider).valueOrNull;
-        if (gym == null) {
-          messenger.showSnackBar(
-            const SnackBar(content: Text('Choisis d\'abord ta salle habituelle sur la carte.')),
-          );
-          return;
-        }
-        final position = await GeolocationService().getCurrentPosition();
-        await ref.read(programServiceProvider).completeExercise(
-              programExerciseId: exerciseId,
-              gymId: gym.id,
-              lat: position.latitude,
-              lon: position.longitude,
-            );
+    if (currentlyDone) {
+      setState(() => _togglingExerciseId = exercise.id);
+      try {
+        await ref.read(programServiceProvider).uncompleteExercise(exercise.id);
+        ref.invalidate(myTodaysCompletionsProvider);
+      } catch (e) {
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+      } finally {
+        if (mounted) setState(() => _togglingExerciseId = null);
       }
+      return;
+    }
+
+    final gym = ref.read(myGymProvider).valueOrNull;
+    if (gym == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Choisis d\'abord ta salle habituelle sur la carte.')),
+      );
+      return;
+    }
+
+    final result = await showDialog<(double?, int?)>(
+      context: context,
+      builder: (context) => _WeightRepsDialog(exercise: exercise),
+    );
+    if (result == null) return;
+
+    setState(() => _togglingExerciseId = exercise.id);
+    try {
+      final position = await GeolocationService().getCurrentPosition();
+      final isRecord = await ref.read(programServiceProvider).completeExercise(
+            programExerciseId: exercise.id,
+            gymId: gym.id,
+            lat: position.latitude,
+            lon: position.longitude,
+            weightKg: result.$1,
+            reps: result.$2,
+          );
       ref.invalidate(myTodaysCompletionsProvider);
+      ref.invalidate(currentProfileProvider);
+      if (isRecord && mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('🏆 Nouveau record personnel sur cet exercice !')),
+        );
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     } finally {
@@ -183,7 +210,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       userProgram: userProgram,
                       doneExerciseIds: doneExerciseIds,
                       togglingExerciseId: _togglingExerciseId,
-                      onToggle: (id) => _toggleExercise(id, doneExerciseIds.contains(id)),
+                      onToggle: (exercise) => _toggleExercise(exercise, doneExerciseIds.contains(exercise.id)),
                       onNextDay: () async {
                         if (!isLoggedIn) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -227,6 +254,74 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+/// Demande le poids/les reps réellement faits avant de cocher un exercice,
+/// pré-rempli avec l'objectif du programme mais modifiable — c'est cette
+/// donnée qui permet de détecter un record et de le montrer aux amis.
+class _WeightRepsDialog extends StatefulWidget {
+  const _WeightRepsDialog({required this.exercise});
+
+  final ProgramExerciseModel exercise;
+
+  @override
+  State<_WeightRepsDialog> createState() => _WeightRepsDialogState();
+}
+
+class _WeightRepsDialogState extends State<_WeightRepsDialog> {
+  late final _weightController = TextEditingController(
+    text: widget.exercise.targetWeightKg != null && widget.exercise.targetWeightKg! > 0
+        ? widget.exercise.targetWeightKg!.toStringAsFixed(0)
+        : '',
+  );
+  late final _repsController = TextEditingController(text: '${widget.exercise.targetReps}');
+
+  @override
+  void dispose() {
+    _weightController.dispose();
+    _repsController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.exercise.exerciseName),
+      content: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _weightController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Poids (kg)'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _repsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Répétitions'),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final weight = double.tryParse(_weightController.text.replaceAll(',', '.'));
+            final reps = int.tryParse(_repsController.text);
+            Navigator.of(context).pop((weight, reps));
+          },
+          child: const Text('Valider'),
+        ),
+      ],
     );
   }
 }

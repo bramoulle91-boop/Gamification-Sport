@@ -27,7 +27,7 @@ class ActivityService {
 
     final completionRows = await _client
         .from('program_exercise_completions')
-        .select('completed_at, users(pseudo), gyms(name), program_exercises(exercise_name)')
+        .select('completed_at, weight_kg, is_record, users(pseudo), gyms(name), program_exercises(exercise_name)')
         .inFilter('user_id', friendIds)
         .gte('completed_at', since)
         .order('completed_at', ascending: false)
@@ -47,6 +47,8 @@ class ActivityService {
           pseudo: _pseudo(row as Map<String, dynamic>),
           gymName: _gymName(row),
           exerciseName: (row['program_exercises'] as Map<String, dynamic>?)?['exercise_name'] as String?,
+          weightKg: (row['weight_kg'] as num?)?.toDouble(),
+          isRecord: row['is_record'] as bool? ?? false,
           at: DateTime.parse(row['completed_at'] as String),
         ),
     ]..sort((a, b) => b.at.compareTo(a.at));
