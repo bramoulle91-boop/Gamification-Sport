@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -6,6 +7,8 @@ import '../../models/friend_activity_model.dart';
 import '../../models/friendship_model.dart';
 import '../../services/providers.dart';
 import '../../widgets/demo_mode_banner.dart';
+
+const _appUrl = 'https://bramoulle91-boop.github.io/Gamification-Sport/';
 
 final _friendshipsProvider = FutureProvider<List<FriendshipModel>>((ref) {
   return ref.watch(friendshipServiceProvider).fetchMyFriendships();
@@ -41,6 +44,38 @@ class FriendsScreen extends ConsumerStatefulWidget {
 
 class _FriendsScreenState extends ConsumerState<FriendsScreen> {
   final _searchController = TextEditingController();
+
+  Future<void> _openInviteDialog() async {
+    final profile = ref.read(currentProfileProvider).valueOrNull;
+    final pseudo = profile?.pseudo;
+    final message = (pseudo != null && pseudo != 'Toi (aperçu)')
+        ? '$pseudo t\'invite sur GymQuest, l\'appli de gamification muscu entre potes 💪\n$_appUrl'
+        : 'Rejoins-moi sur GymQuest, l\'appli de gamification muscu entre potes 💪\n$_appUrl';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Inviter des amis'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Fermer')),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: message));
+              if (context.mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Message copié — colle-le où tu veux 📋')),
+                );
+              }
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Copier'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _search() async {
     final query = _searchController.text.trim();
@@ -92,6 +127,11 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
       appBar: AppBar(
         title: const Text('Amis'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_add_alt),
+            tooltip: 'Inviter des amis',
+            onPressed: _openInviteDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.bolt),
             tooltip: 'Défis',

@@ -35,4 +35,9 @@ class GymChatService {
       'message': trimmed,
     });
   }
+
+  /// Supprime un message — réservé à son auteur (RLS).
+  Future<void> deleteMessage(String messageId) async {
+    await _client.from('gym_messages').delete().eq('id', messageId);
+  }
 }

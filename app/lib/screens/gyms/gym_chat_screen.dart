@@ -37,6 +37,28 @@ class _GymChatScreenState extends ConsumerState<GymChatScreen> {
   final _scrollController = ScrollController();
   bool _sending = false;
 
+  Future<void> _deleteMessage(GymMessageModel msg) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer ce message ?'),
+        content: Text(msg.message),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Supprimer')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(gymChatServiceProvider).deleteMessage(msg.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      }
+    }
+  }
+
   Future<void> _send() async {
     final text = _controller.text;
     if (text.trim().isEmpty) return;
@@ -123,34 +145,46 @@ class _GymChatScreenState extends ConsumerState<GymChatScreen> {
                     final isMine = msg.userId == myId;
                     return Align(
                       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                        decoration: BoxDecoration(
-                          color: isMine
-                              ? Theme.of(context).colorScheme.primaryContainer
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (!isMine)
-                              Text(
-                                msg.pseudo,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                  color: Theme.of(context).colorScheme.primary,
+                      child: GestureDetector(
+                        onLongPress: isMine ? () => _deleteMessage(msg) : null,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                          decoration: BoxDecoration(
+                            color: isMine
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (!isMine)
+                                Text(
+                                  msg.pseudo,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
                                 ),
+                              Text(msg.message),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _formatTime(msg.createdAt),
+                                    style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.outline),
+                                  ),
+                                  if (isMine) ...[
+                                    const SizedBox(width: 4),
+                                    Icon(Icons.more_horiz, size: 12, color: Theme.of(context).colorScheme.outline),
+                                  ],
+                                ],
                               ),
-                            Text(msg.message),
-                            Text(
-                              _formatTime(msg.createdAt),
-                              style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.outline),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     );
