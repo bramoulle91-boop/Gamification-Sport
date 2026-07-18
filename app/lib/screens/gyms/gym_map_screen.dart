@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/friendship_model.dart';
+import '../../models/gym_checkin_model.dart';
 import '../../models/gym_model.dart';
 import '../../models/machine_king_model.dart';
 import '../../models/osm_gym_candidate.dart';
@@ -47,6 +48,19 @@ final _myFriendshipsProvider = FutureProvider<List<FriendshipModel>>((ref) {
 final _gymKingsProvider = FutureProvider.family<List<MachineKingModel>, String>((ref, gymId) {
   return ref.watch(machineKingServiceProvider).fetchMachineKings(gymId: gymId);
 });
+
+/// Qui de GymQuest est passé par cette salle aujourd'hui (check-ins réels,
+/// pas juste "salle habituelle") — sert à l'affluence et aux amis connectés.
+final _gymCheckinsProvider = FutureProvider.family<List<GymCheckinModel>, String>((ref, gymId) {
+  return ref.watch(gymServiceProvider).fetchTodaysCheckins(gymId);
+});
+
+String _checkinTimeAgo(DateTime at) {
+  final diff = DateTime.now().toUtc().difference(at.toUtc());
+  if (diff.inMinutes < 1) return "à l'instant";
+  if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
+  return 'il y a ${diff.inHours} h';
+}
 
 double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
   const earthRadiusM = 6371000.0;
@@ -704,12 +718,6 @@ class _OsmPin extends StatelessWidget {
   }
 }
 
-_AttendanceLevel _levelFor(double rate) {
-  if (rate < 0.4) return _AttendanceLevel.calm;
-  if (rate < 0.75) return _AttendanceLevel.moderate;
-  return _AttendanceLevel.saturated;
-}
-
 enum _AttendanceLevel { calm, moderate, saturated }
 
 extension on _AttendanceLevel {
@@ -782,14 +790,15 @@ class _GymBottomSheet extends ConsumerWidget {
     final isLoggedIn = ref.watch(currentUserIdProvider) != null;
     final friendshipsAsync = ref.watch(_myFriendshipsProvider);
     final kingsAsync = ref.watch(_gymKingsProvider(gym.id));
+    final checkinsAsync = ref.watch(_gymCheckinsProvider(gym.id));
     final myId = ref.watch(currentUserIdProvider);
 
-    final friendsHere = (isLoggedIn && myId != null)
+    final friendIds = (isLoggedIn && myId != null)
         ? (friendshipsAsync.valueOrNull ?? [])
-            .where((f) => f.status == FriendshipStatus.unlocked && f.homeGymIdForOther(myId) == gym.id)
-            .map((f) => f.pseudoForOther(myId))
-            .toList()
-        : <String>[];
+            .where((f) => f.status == FriendshipStatus.unlocked)
+            .map((f) => f.userId1 == myId ? f.userId2 : f.userId1)
+            .toSet()
+        : <String>{};
 
     return Container(
       constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.78),
@@ -833,99 +842,128 @@ class _GymBottomSheet extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // A. Affluence en direct
-                    if (gym.liveAttendanceRate != null) ...[
-                      Builder(builder: (context) {
-                        final level = _levelFor(gym.liveAttendanceRate!);
-                        return Row(
+                    // A. Affluence réelle — comptée sur les check-ins GymQuest
+                    // du jour (pas la fréquentation totale de la salle).
+                    checkinsAsync.when(
+                      loading: () => const SizedBox(
+                        height: 20,
+                        child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: _kAccent)),
+                      ),
+                      error: (_, __) => const Text(
+                        'Affluence non disponible pour le moment.',
+                        style: TextStyle(color: _kMuted, fontSize: 13),
+                      ),
+                      data: (checkins) {
+                        final count = checkins.map((c) => c.userId).toSet().length;
+                        final level = count == 0
+                            ? _AttendanceLevel.calm
+                            : count <= 3
+                                ? _AttendanceLevel.moderate
+                                : _AttendanceLevel.saturated;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${(gym.liveAttendanceRate! * 100).round()}% d\'affluence',
-                              style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                            Row(
+                              children: [
+                                Text(
+                                  '$count connexion${count > 1 ? 's' : ''} GymQuest aujourd\'hui',
+                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                                ),
+                                if (count > 0) ...[
+                                  const SizedBox(width: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: level.color.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(100),
+                                      border: Border.all(color: level.color.withOpacity(0.4)),
+                                    ),
+                                    child: Text(
+                                      '${level.emoji} ${level.label}',
+                                      style: TextStyle(color: level.color, fontSize: 12, fontWeight: FontWeight.w700),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
-                            const SizedBox(width: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: level.color.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(100),
-                                border: Border.all(color: level.color.withOpacity(0.4)),
-                              ),
-                              child: Text(
-                                '${level.emoji} ${level.label}',
-                                style: TextStyle(color: level.color, fontSize: 12, fontWeight: FontWeight.w700),
-                              ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Basé sur les utilisateurs GymQuest, pas sur la fréquentation totale de la salle.',
+                              style: TextStyle(color: _kMuted, fontSize: 11),
                             ),
                           ],
                         );
-                      }),
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: gym.liveAttendanceRate,
-                          minHeight: 6,
-                          backgroundColor: _kBorder,
-                          valueColor: AlwaysStoppedAnimation(_levelFor(gym.liveAttendanceRate!).color),
-                        ),
-                      ),
-                    ] else
-                      const Text(
-                        'Affluence non disponible pour cette salle pour le moment.',
-                        style: TextStyle(color: _kMuted, fontSize: 13),
-                      ),
+                      },
+                    ),
                     const SizedBox(height: 24),
 
-                    // B. Confidentialité "Mes amis"
+                    // B. Amis connectés aujourd'hui dans cette salle (check-in
+                    // réel, pas juste "salle habituelle").
                     if (!isLoggedIn)
                       const Text(
-                        'Connecte-toi pour voir tes amis qui s\'entraînent ici.',
+                        'Connecte-toi pour voir tes amis connectés ici.',
                         style: TextStyle(color: _kMuted, fontSize: 13),
                       )
-                    else ...[
-                      Text(
-                        friendsHere.isEmpty
-                            ? 'Aucun ami ici'
-                            : '${friendsHere.length} ami${friendsHere.length > 1 ? 's' : ''} s\'entraîne${friendsHere.length > 1 ? 'nt' : ''} ici',
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                      if (friendsHere.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 74,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: friendsHere.length,
-                            separatorBuilder: (_, __) => const SizedBox(width: 14),
-                            itemBuilder: (context, i) {
-                              final pseudo = friendsHere[i];
-                              final initials = pseudo.length >= 2 ? pseudo.substring(0, 2).toUpperCase() : pseudo.toUpperCase();
-                              return Column(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 22,
-                                    backgroundColor: _colorForPseudo(pseudo),
-                                    child: Text(
-                                      initials,
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
-                                    ),
+                    else
+                      checkinsAsync.when(
+                        loading: () => const SizedBox(
+                          height: 20,
+                          child: Center(child: CircularProgressIndicator(strokeWidth: 2, color: _kAccent)),
+                        ),
+                        error: (_, __) => const Text(
+                          'Amis connectés : non disponible pour le moment.',
+                          style: TextStyle(color: _kMuted, fontSize: 13),
+                        ),
+                        data: (checkins) {
+                          final friendCheckins = checkins.where((c) => friendIds.contains(c.userId)).toList();
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                friendCheckins.isEmpty
+                                    ? 'Aucun ami connecté ici aujourd\'hui'
+                                    : '${friendCheckins.length} ami${friendCheckins.length > 1 ? 's' : ''} connecté${friendCheckins.length > 1 ? 's' : ''} ici aujourd\'hui',
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
+                              ),
+                              if (friendCheckins.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 74,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: friendCheckins.length,
+                                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                                    itemBuilder: (context, i) {
+                                      final checkin = friendCheckins[i];
+                                      final pseudo = checkin.pseudo;
+                                      final initials =
+                                          pseudo.length >= 2 ? pseudo.substring(0, 2).toUpperCase() : pseudo.toUpperCase();
+                                      return Column(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 22,
+                                            backgroundColor: _colorForPseudo(pseudo),
+                                            child: Text(
+                                              initials,
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(pseudo, style: const TextStyle(color: _kMuted, fontSize: 11)),
+                                          Text(
+                                            _checkinTimeAgo(checkin.checkedInAt),
+                                            style: const TextStyle(color: _kMuted, fontSize: 9),
+                                          ),
+                                        ],
+                                      );
+                                    },
                                   ),
-                                  const SizedBox(height: 6),
-                                  Text(pseudo, style: const TextStyle(color: _kMuted, fontSize: 11)),
-                                ],
-                              );
-                            },
-                          ),
-                        ),
-                      ] else
-                        const Padding(
-                          padding: EdgeInsets.only(top: 4),
-                          child: Text(
-                            'Aucun ami n\'a choisi cette salle comme salle habituelle pour le moment.',
-                            style: TextStyle(color: _kMuted, fontSize: 13),
-                          ),
-                        ),
-                    ],
+                                ),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
                     const SizedBox(height: 24),
 
                     // C. Record en cours sur une machine de la salle

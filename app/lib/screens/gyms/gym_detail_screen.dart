@@ -14,6 +14,11 @@ final _gymMachinesProvider = FutureProvider.family<List<MachineModel>, String>((
   return ref.watch(gymServiceProvider).fetchMachinesForGym(gymId);
 });
 
+final _gymCheckinsProvider = FutureProvider.family<int, String>((ref, gymId) async {
+  final checkins = await ref.watch(gymServiceProvider).fetchTodaysCheckins(gymId);
+  return checkins.map((c) => c.userId).toSet().length;
+});
+
 /// Fiche d'une salle : ses machines, accessibles directement (sans passer
 /// par le scan QR), et le choix de cette salle comme salle habituelle.
 class GymDetailScreen extends ConsumerWidget {
@@ -41,6 +46,7 @@ class GymDetailScreen extends ConsumerWidget {
     final gymAsync = ref.watch(_gymProvider(gymId));
     final machinesAsync = ref.watch(_gymMachinesProvider(gymId));
     final myGymAsync = ref.watch(myGymProvider);
+    final checkinsCountAsync = ref.watch(_gymCheckinsProvider(gymId));
 
     return Scaffold(
       appBar: AppBar(
@@ -64,9 +70,13 @@ class GymDetailScreen extends ConsumerWidget {
                   const Icon(Icons.people_outline, size: 18),
                   const SizedBox(width: 6),
                   Text(
-                    gym.liveAttendanceRate != null
-                        ? 'Affluence : ${(gym.liveAttendanceRate! * 100).toStringAsFixed(0)}%'
-                        : 'Affluence inconnue pour le moment',
+                    checkinsCountAsync.when(
+                      loading: () => 'Affluence...',
+                      error: (_, __) => 'Affluence inconnue pour le moment',
+                      data: (count) => count == 0
+                          ? 'Personne connecté sur GymQuest aujourd\'hui'
+                          : '$count connexion${count > 1 ? 's' : ''} GymQuest aujourd\'hui',
+                    ),
                   ),
                 ],
               ),
